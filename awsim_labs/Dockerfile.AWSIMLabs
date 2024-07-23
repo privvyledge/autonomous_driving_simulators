@@ -1,0 +1,111 @@
+ARG UBUNTU_RELEASE_YEAR=22
+ARG CUDA_MAJOR=12
+ARG CUDA_MINOR=3
+ARG CUDA_PATCH=2
+ARG CUDNN_VERSION=9
+
+# Base Images: carlasim/carla:0.9.14, nvidia-cuda-cudnn, ubuntu:22.04, ros:humble-ros-base-jammy
+FROM nvidia/cuda:${CUDA_MAJOR}.${CUDA_MINOR}.${CUDA_PATCH}-cudnn${CUDNN_VERSION}-devel-ubuntu${UBUNTU_RELEASE_YEAR}.04
+
+# ARGS
+ARG USERNAME=awsim_labs
+ENV USERNAME=${USERNAME}
+ARG USER_UID=1000
+ARG USER_GID=$USER_UID
+
+ARG PYTHON_MAJOR=3
+ARG PYTHON_MINOR=10
+ARG PYTHON_PATCH=12
+ARG UBUNTU_RELEASE_YEAR
+ARG CUDA_MAJOR
+ARG CUDA_MINOR
+ARG CUDA_PATCH
+ARG CUDNN_VERSION
+ARG CARLA_MAJOR=0
+ARG CARLA_MINOR=9
+ARG CARLA_PATCH=14
+
+# Set up the shell
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ENV TZ=America/New_York
+ENV LOGNAME=root
+ARG DEBIAN_FRONTEND=noninteractive
+ARG DEBCONF_NONINTERACTIVE_SEEN=true
+
+ARG ROS_VERSION="ROS2"
+ARG ROS_DISTRO="humble"
+ENV ROS_DISTRO=${ROS_DISTRO}
+ENV ROS_ROOT=/opt/ros/${ROS_DISTRO}
+ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+
+ENV NVIDIA_DRIVER_CAPABILITIES=all
+ENV NVIDIA_VISIBLE_DEVICES=all
+
+# Install Sudo
+RUN apt-get update && DEBIAN_FRONTEND="noninteractive" apt-get install -yq sudo tzdata && \
+    ln -fns /usr/share/zoneinfo/${TZ} /etc/localtime && echo $TZ > /etc/timezone && \
+    dpkg-reconfigure -f noninteractive tzdata
+
+# Install dependencies
+RUN sudo apt-get update -y && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -y --no-install-recommends \
+    sudo \
+    git \
+    curl \
+    wget \
+    less \
+    zstd \
+    udev \
+    unzip \
+    build-essential \
+    apt-transport-https \
+    software-properties-common \
+    lsb-release \
+    gnupg2 \
+    cmake \
+    pkg-config \
+    libpython3-dev \
+    python${PYTHON_MAJOR}-dev \
+    python${PYTHON_MAJOR} \
+    python${PYTHON_MAJOR}-venv \
+    python${PYTHON_MAJOR}.${PYTHON_MINOR} \
+    python${PYTHON_MAJOR}.${PYTHON_MINOR}-venv \
+    python${PYTHON_MAJOR}-pip \
+    python${PYTHON_MAJOR}-setuptools \
+    libpng-dev \
+    libtiff5-dev \
+    libjpeg-dev \
+    libturbojpeg-dev \
+    libomp5 \
+    xdg-user-dirs \
+    xdg-utils \
+    alsa-utils \
+    libvulkan1 && \
+    sudo rm -rf /var/lib/apt/lists/*
+
+# Set Python3 as default
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 1
+RUN python3 -m pip install -U pip setuptools wheel
+
+## Fix ALSA Lib issues (https://github.com/carla-simulator/carla/issues/2820#issuecomment-624093857)
+#RUN echo pcm.!default { type plug slave.pcm "null" } >> /etc/asound.conf && \
+#    echo pcm.!default { type plug slave.pcm "null" } >> /home/${USER}/.asoundrc
+
+# Create a non root user
+RUN useradd --create-home --shell /bin/bash -g root -G sudo,video ${USERNAME} && \
+        echo "$USERNAME:$USERNAME" | chpasswd && \
+        usermod --shell /bin/bash $USERNAME && \
+        usermod -aG sudo,video $USERNAME && \
+        usermod  --uid $USER_UID $USERNAME && \
+        echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/$USERNAME && \
+        chmod 0440 /etc/sudoers.d/$USERNAME
+
+USER ${USERNAME}
+WORKDIR /home/${USERNAME}
+#COPY --chown=${USERNAME}:${USERNAME} . /home/${USERNAME}
+
+# Install AWSIMLABs
+RUN mkdir -p /home/${USERNAME}/Downloads/ && cd /home/${USERNAME}/Downloads/ && \
+    wget https://github.com/autowarefoundation/AWSIM-Labs/releases/download/v1.1.1/awsim_labs_v1.1.1.zip && \
+    unzip awsim_labs_v1.1.1.zip && rm awsim_labs_v1.1.1.zip && \
+    mv awsim_labs_v1.1.1 /home/${USERNAME}/awsim_simulator && \
+    cd /home/${USERNAME}/awsim_simulator && chmod +x awsim_labs.x86_64
