@@ -160,7 +160,8 @@ RUN python3 -m pip install "numpy==1.23.5" pygame transforms3d "setuptools==65.7
 RUN mkdir -p /home/${USERNAME}/carla_ros_ws/src && cd /home/${USERNAME}/carla_ros_ws/src && \
     git clone --recurse-submodules https://github.com/gezp/carla_ros.git -b humble-carla-0.9.14 && \
     cd /home/${USERNAME}/Downloads/ && \
-    wget https://raw.githubusercontent.com/carla-simulator/ros-bridge/master/carla_spawn_objects/config/objects.json && \
+    wget https://raw.githubusercontent.com/privvyledge/ros-bridge/feature/add-humble-support/carla_spawn_objects/config/objects.json && \
+    wget https://raw.githubusercontent.com/privvyledge/ros-bridge/feature/add-humble-support/carla_spawn_objects/config/objects_autoware_tesla_model3.json && \
     wget https://gist.githubusercontent.com/soumya997/0b7a43fe23d2549aafe19972349664e1/raw/ecac931ac03ef87bde38d431b47e765fdf42ff0a/carla_ros.rviz
 
 RUN cd /home/${USERNAME}/carla_ros_ws && \
@@ -185,14 +186,14 @@ RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /home/${USERNAME}/.bashrc
     echo "sudo ip link set lo multicast on" >> /home/${USERNAME}/.bashrc
 
 ### Usage
-# ./CarlaUE4.sh -prefernvidia -nosound
+# ./CarlaUE4.sh -prefernvidia -nosound -benchmark -fps=30
 # ros2 launch carla_ros_bridge carla_ros_bridge.launch.py synchronous_mode:=True town:=Town03 timeout:=10
 # ros2 launch carla_spawn_objects carla_example_ego_vehicle.launch.py spawn_sensors_only:=False objects_definition_file:=/home/carla/Downloads/objects.json
 # rviz2 -d /home/carla/Downloads/carla_ros.rviz
 
 ## Or
 # ./CarlaUE4.sh -prefernvidia -nosound
-# ros2 launch carla_ad_demo carla_ad_demo.launch.py synchronous_mode:=True town:=Town03 timeout:=10
+# ros2 launch carla_ad_demo carla_ad_demo.launch.py synchronous_mode:=True town:=Town03 timeout:=10 objects_definition_file:=/home/carla/Downloads/objects.json
 # rviz2 -d /home/carla/Downloads/carla_ros.rviz
 
 ### Maps (https://carla.readthedocs.io/en/latest/core_map/#non-layered-maps | https://github.com/carla-simulator/carla/blob/master/Docs/map_town03.md)
