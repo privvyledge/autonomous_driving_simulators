@@ -31,7 +31,7 @@ ENV LOGNAME=root
 ARG DEBIAN_FRONTEND=noninteractive
 ARG DEBCONF_NONINTERACTIVE_SEEN=true
 
-ARG ROS_VERSION="ROS2"
+ARG ROS_1_OR_2="ROS2"
 ARG ROS_DISTRO="humble"
 ENV ROS_DISTRO=${ROS_DISTRO}
 ENV ROS_ROOT=/opt/ros/${ROS_DISTRO}
@@ -62,6 +62,23 @@ RUN sudo apt-get update -y && DEBIAN_FRONTEND="noninteractive" sudo apt-get inst
     gnupg2 \
     cmake \
     pkg-config \
+    ca-certificates libegl1 \
+    software-properties-common \
+    lsb-release \
+    gnupg2 \
+    cmake \
+    ccache \
+    pkg-config \
+    swig \
+    g++ \
+    libpython3-dev \
+    python3-dev \
+    python3 \
+    python3-venv \
+    python3.10 \
+    python3.10-venv \
+    python3-pip \
+    python3-setuptools \
     libpython3-dev \
     python${PYTHON_MAJOR}-dev \
     python${PYTHON_MAJOR} \
@@ -90,7 +107,7 @@ RUN python3 -m pip install -U pip setuptools wheel
 #    echo pcm.!default { type plug slave.pcm "null" } >> /home/${USER}/.asoundrc
 
 # Create a non root user
-RUN useradd --create-home --shell /bin/bash -g ${USERNAME} -G sudo,video ${USERNAME} && \
+RUN useradd --create-home --shell /bin/bash -g root -G sudo,video ${USERNAME} && \
         echo "$USERNAME:$USERNAME" | chpasswd && \
         usermod --shell /bin/bash $USERNAME && \
         usermod -aG sudo,video $USERNAME && \
@@ -142,7 +159,6 @@ WORKDIR /home/${USERNAME}/carla_simulator
 ### -quality-level=Low (Low or Epic)
 ### todo: docker run -p 2000-2002:2000-2002 -it --rm --name carlasim --privileged --gpus all --net=host -e DISPLAY=$DISPLAY -e  SDL_VIDEODRIVER=x11 -v /tmp/.X11-unix:/tmp/.X11-unix:rw carlasim/carla:0.9.14 /bin/bash ./CarlaUE4.sh -vulkan
 
-
 # Install AWSIMLABs
 RUN mkdir -p /home/${USERNAME}/Downloads/ && cd /home/${USERNAME}/Downloads/ && \
     wget https://github.com/autowarefoundation/AWSIM-Labs/releases/download/v1.1.1/awsim_labs_v1.1.1.zip && \
@@ -175,6 +191,37 @@ ENV LANG=en_US.UTF-8
 #    sudo rosdep init && \
 #    rosdep update
 
+# ROS fundamentals
+RUN --mount=type=cache,target=/var/cache/apt \
+        sudo apt-get update -y && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -y --no-install-recommends \
+        devscripts \
+        dh-make \
+        fakeroot \
+        libxtensor-dev \
+        python3-bloom \
+        python3-colcon-common-extensions \
+        python3-pip \
+        python3-pybind11 \
+        python3-pytest-cov \
+        python3-rosdep \
+        python3-rosinstall-generator \
+        python3-vcstool \
+        python3-colcon-mixin \
+        python3-flake8-docstrings \
+        python3-pip \
+        python3-pytest-cov \
+        ros-dev-tools \
+        python3-flake8-blind-except \
+        python3-flake8-builtins \
+        python3-flake8-class-newline \
+        python3-flake8-comprehensions \
+        python3-flake8-deprecated \
+        python3-flake8-import-order \
+        python3-flake8-quotes \
+        python3-pytest-repeat \
+        python3-pytest-rerunfailures \
+        quilt
+
 # Install ROS2 Bridges
 ARG ROS2_WS=carla_ros_ws
 ARG ROS2_WS=${ROS2_WS}
@@ -183,7 +230,16 @@ ENV BUILD_HOME=${BUILD_HOME}
 RUN mkdir -p ${BUILD_HOME}/src
 
 RUN sudo apt update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -y --no-install-recommends \
-    ros-${ROS_DISTRO}-derived-object-msgs ros-${ROS_DISTRO}-tf-transformations
+#    python3-opencv \
+#    libopencv-dev \
+    ros-${ROS_DISTRO}-derived-object-msgs \
+    ros-${ROS_DISTRO}-tf-transformations \
+    ros-${ROS_DISTRO}-ackermann-msgs \
+#    ros-$ROS_DISTRO-pcl-conversions \
+#    ros-$ROS_DISTRO-cv-bridge \
+#    ros-$ROS_DISTRO-vision-opencv \
+    ros-$ROS_DISTRO-rqt-image-view \
+    ros-$ROS_DISTRO-rqt-gui-py
 
 # simple-id==1.0.1
 RUN python3 -m pip install "numpy==1.23.5" pygame transforms3d "setuptools==65.7.0" simple-pid networkx pexpect
@@ -211,7 +267,7 @@ RUN sudo rm -rf /autoware && \
     mkdir src  && \
     vcs import src < autoware.repos
 
-#USER root
+USER root
 # Use ansible to download Autoware artifacts
 RUN sudo apt-get -y update && \
     cd ${BUILD_HOME}/src/autoware && \
@@ -224,7 +280,7 @@ RUN sudo apt-get -y update && \
     python3 -m pip uninstall -y ansible ansible-core && \
     sudo apt-get autoremove -y && rm -rf "$HOME"/.cache && \
     chown -R $USERNAME /home/${USERNAME}/autoware_data
-#USER ${USERNAME}
+USER ${USERNAME}
 
 # Install Carla ROS2 Bridge
 #RUN cd ${BUILD_HOME}/src && \
@@ -268,32 +324,23 @@ RUN mkdir -p ~/autoware_map/ && cd ~/Downloads/ && \
     mv nishishinjuku_autoware_map ~/autoware_map/nishishinjuku_autoware_map
 
 RUN sudo apt-get update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -y --no-install-recommends \
+#    libpcl-dev \
     ros-${ROS_DISTRO}-tf2-tools \
     ros-${ROS_DISTRO}-tf-transformations \
     ros-${ROS_DISTRO}-rqt-tf-tree \
-    ros-${ROS_DISTRO}-tf2-geometry-msgs \
-    libpcl-dev
+    ros-${ROS_DISTRO}-tf2-geometry-msgs
+
 
 RUN mkdir -p /home/${USERNAME}/sdks
-COPY --chown=${USERNAME}:${USERNAME} ../../autonomous_driving_simulators /home/${USERNAME}/src
-#RUN cd ${BUILD_HOME}/src && \
-#    git clone https://github.com/privvyledge/autonomous_driving_simulators.git -b ros2_launch
-
-# Install Joystick package
-# todo: switch to the master branch of https://github.com/ros-teleop/teleop_tools.git -b master
-RUN cd ${BUILD_HOME}/src && \
-    git clone https://github.com/f1tenth/teleop_tools.git -b foxy-devel && \
-    git clone https://github.com/f1tenth/ackermann_mux.git -b foxy-devel && \
-    git clone https://github.com/ros-teleop/twist_mux.git -b rolling
-
 # Install MPC related packages (Casadi, Acados, Do MPC)
 RUN python3 -m pip install do-mpc casadi
 ARG ACADOS_OPENMP_PARALLELIZATION_ENABLED=ON
-ENV ACADOS_ROOT=/home/${USERNAME}/sdks/acados
-ENV ACADOS_PATH=${ACADOS_ROOT}
-ENV ACADOS_SOURCE_DIR=${ACADOS_ROOT}
+#ENV ACADOS_ROOT=/home/${USERNAME}/sdks/acados
+#ENV ACADOS_PATH=${ACADOS_ROOT}
+#ENV ACADOS_SOURCE_DIR=${ACADOS_ROOT}
 
 RUN mkdir -p "/home/${USERNAME}/sdks" && cd "/home/${USERNAME}/sdks" && \
+    export ACADOS_ROOT='/home/${USERNAME}/sdks/acados' && export ACADOS_PATH=${ACADOS_ROOT} && export ACADOS_SOURCE_DIR=${ACADOS_ROOT} && \
     git clone https://github.com/acados/acados.git && cd acados && \
     git submodule update --recursive --init && \
     mkdir build && cd build && \
@@ -304,10 +351,41 @@ RUN mkdir -p "/home/${USERNAME}/sdks" && cd "/home/${USERNAME}/sdks" && \
         -DCMAKE_BUILD_TYPE=Release \
         -DACADOS_WITH_OPENMP=${ACADOS_OPENMP_PARALLELIZATION_ENABLED} .. && \
     sudo make install -j$(nproc) && \
+    python3 -m pip install -U "numpy==1.23.5" && \
     python3 -m pip install -e ${ACADOS_ROOT}/interfaces/acados_template && \
     sudo apt update && sudo apt install -y rustc cargo && cd ../bin && \
     git clone https://github.com/acados/tera_renderer.git && cd tera_renderer && cargo build --verbose --release && \
     cp target/release/t_renderer ${ACADOS_ROOT}/bin
+
+#ENV LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${ACADOS_ROOT}/lib
+
+#COPY --chown=${USERNAME}:${USERNAME} . /home/${USERNAME}/src
+RUN cd ${BUILD_HOME}/src && \
+    git clone https://github.com/privvyledge/autonomous_driving_simulators.git -b ros2_launch
+
+# Install Joystick package
+# todo: switch to the master branch of https://github.com/ros-teleop/teleop_tools.git -b master
+RUN cd ${BUILD_HOME}/src && \
+    git clone https://github.com/f1tenth/teleop_tools.git -b foxy-devel && \
+    git clone https://github.com/f1tenth/ackermann_mux.git -b foxy-devel && \
+    git clone https://github.com/ros-teleop/twist_mux.git -b rolling
+
+#################################################### (Optional) Setup SLAM toolbox. Use galactic and above (or noetic) to get pose
+RUN sudo apt-get update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -y --no-install-recommends \
+    ros-${ROS_DISTRO}-slam-toolbox && \
+    sudo rm -rf /var/lib/apt/lists/*
+# RUN cd "$BUILD_HOME/src" && git clone https://github.com/SteveMacenski/slam_toolbox.git -b ${ROS_DISTRO}-devel
+
+#################################################### (Optional) Setup Robot localization
+RUN sudo apt-get update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -y --no-install-recommends \
+    ros-${ROS_DISTRO}-robot-localization && \
+    sudo rm -rf /var/lib/apt/lists/*
+# RUN cd "$BUILD_HOME/src" && git clone https://github.com/cra-ros-pkg/robot_localization.git -b ${ROS_DISTRO}-devel
+
+#################################################### (Optional) Setup IMU Filters
+RUN sudo apt-get update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -y --no-install-recommends \
+    ros-${ROS_DISTRO}-imu-tools && \
+    sudo rm -rf /var/lib/apt/lists/*
 
 #-------------------------------------------------
 # Setup ROS2 Nav
@@ -346,12 +424,173 @@ RUN cd "${BUILD_HOME}/src" && \
     git clone -b 2.4.0 https://github.com/SteveMacenski/nonpersistent_voxel_layer.git
 #    git checkout 27c81cb90f329eda0d2e3760348c736fea0a975f
 
+#################################################### Setup Autonomous bringup packages.
+RUN cd "$BUILD_HOME/src" && git clone https://github.com/privvyledge/f1tenth_launch.git -b ${ROS_DISTRO}-dev && \
+    git clone https://github.com/privvyledge/trajectory_following_ros2.git
+
+#################################################### Setup Laser filters/pipeline.
+#RUN apt-get update && DEBIAN_FRONTEND="noninteractive" apt-get install -y --no-install-recommends \
+#    ros-${ROS_DISTRO}-laser-pipeline ros-${ROS_DISTRO}-laser-filters  && \
+#    rm -rf /var/lib/apt/lists/*
+RUN sudo apt-get update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -y --no-install-recommends \
+    ros-${ROS_DISTRO}-filters && \
+    cd "$BUILD_HOME/src" && git clone https://github.com/ros-perception/laser_filters.git -b ros2
+
+#################################################### Setup depth image to laser scan. No need as its already in the container
+#RUN sudo apt-get update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -y --no-install-recommends \
+#    ros-${ROS_DISTRO}-depthimage-to-laserscan  && \
+#    sudo rm -rf /var/lib/apt/lists/*
+# RUN cd "$BUILD_HOME/src" && git clone https://github.com/ros-perception/depthimage_to_laserscan.git -b ros2
+## Switch back to the main branch above after this pull request has been merged or any other fix for the QoS issues (https://github.com/ros-perception/depthimage_to_laserscan/pull/76)
+RUN cd "$BUILD_HOME/src" && git clone https://github.com/Myzhar/depthimage_to_laserscan.git -b ros2_fix_qos_for_ipc
+
+#################################################### Setup Image Proc (e.g PointClouds from depth or stereo images)
+RUN sudo apt-get update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -y --no-install-recommends \
+    ros-${ROS_DISTRO}-image-pipeline && \
+    sudo rm -rf /var/lib/apt/lists/*
+
+#-------------------------------------------------
+# Setup Mapping packages (LIO-SAM).
+# Some packages to consider (https://autowarefoundation.github.io/autoware-documentation/main/how-to-guides/integrating-autoware/creating-maps/open-source-slam/)
+# https://github.com/TixiaoShan/LIO-SAM/tree/ros2 (lidar, imu, gps)
+# https://github.com/Ericsii/FAST_LIO (lidar, imu)
+# https://github.com/rsasaki0109/li_slam_ros2
+# https://github.com/rsasaki0109/lidarslam_ros2 (lidar, imu)
+#-------------------------------------------------
+# LIO_SAM
+RUN sudo apt-get update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -y --no-install-recommends \
+    software-properties-common \
+    ros-${ROS_DISTRO}-robot-state-publisher \
+    ros-${ROS_DISTRO}-perception-pcl \
+    ros-${ROS_DISTRO}-pcl-msgs \
+    ros-${ROS_DISTRO}-vision-opencv \
+    ros-${ROS_DISTRO}-xacro \
+    && sudo add-apt-repository -y ppa:borglab/gtsam-release-4.1 \
+    && sudo apt-get update \
+    && sudo apt install -y --no-install-recommends libgtsam-dev libgtsam-unstable-dev \
+    && sudo rm -rf /var/lib/apt/lists/*
+
+RUN cd "$BUILD_HOME/src" && git clone --branch ros2 https://github.com/privvyledge/LIO-SAM.git
+
+#################################################### Setup RTAB-Map (which also publishes odometry from laser_scan)
+RUN cd "$BUILD_HOME/src" && git clone https://github.com/introlab/rtabmap.git && git clone https://github.com/introlab/rtabmap_ros.git -b ${ROS_DISTRO}-devel
+#RUN sudo apt-get update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -y --no-install-recommends \
+#    ros-${ROS_DISTRO}-rtabmap-odom ros-${ROS_DISTRO}-rtabmap-slam \
+#    ros-${ROS_DISTRO}-rtabmap-launch ros-${ROS_DISTRO}-rtabmap-python ros-${ROS_DISTRO}-rtabmap-viz \
+#    ros-${ROS_DISTRO}-rtabmap-rviz-plugins ros-${ROS_DISTRO}-grid-map-rviz-plugin && \
+#    sudo rm -rf /var/lib/apt/lists/*
+
+#----------------------------------------------
+# Setup KISS-ICP support
+#----------------------------------------------
+RUN cd ${BUILD_HOME}/src && git clone https://github.com/PRBonn/kiss-icp.git
+
+#----------------------------------------------
+# Install my image recording package
+#----------------------------------------------
+RUN cd ${BUILD_HOME}/src && git clone https://github.com/privvyledge/ros_images_to_files.git
+
+#----------------------------------------------
+# Install YOLOv8 and corresponding ROS nodes
+# YOLOv8 nodes.
+# Downgrade numpy to 1.23.5 if np.bool depracation errors occure
+# Note that downgrading numpy might cause issues with other python packages, i.e onnxruntime-gpu and tensorflow as they require higher numpy versions. Could use a pytorch only base image instead.
+# To export to tensorrt
+# Using the command line:
+# Using python: python3 -c "from ultralytics import YOLO;model = YOLO('yolov8s.pt');model.export(format='engine', half=True, simplify=True)"
+
+# YOLOv8 ROS Usage. todo: put in launch files:
+# images only
+# ros2 launch ultralytics_ros tracker.launch.xml debug:=false input_topic:=/camera/camera/color/image_raw yolo_model:=yolov8m-seg.pt
+# ros2 launch yolov8_bringup yolov8.launch.py model:=yolov8m-seg.pt input_image_topic:=/camera/camera/color/image_raw # or yolov9
+# 3D
+# ros2 launch ultralytics_ros tracker_with_cloud.launch.xml debug:=false input_topic:=/camera/camera/color/image_raw yolo_model:=yolov8m-seg.pt camera_info_topic:=/camera/camera/color/camera_info lidar_topic:=/camera/camera/depth/color/points yolo_result_topic:=/yolo/realsense/rgb yolo_3d_result_topic:=/yolo/realsense_3d_result cluster_tolerance:=0.3  voxel_leaf_size:=0.1 min_cluster_size:=100 max_cluster_size:=10000
+# ros2 launch yolov8_bringup yolov8_3d.launch.py model:=yolov8m-seg.pt input_image_topic:=/camera/camera/color/image_raw input_depth_topic:=/camera/camera/depth/image_rect_raw input_depth_info_topic:=/camera/camera/depth/camera_info target_frame:=camera_link
+#----------------------------------------------
+# (optionally) download fonts
+ADD https://github.com/ultralytics/assets/releases/download/v0.0.0/Arial.ttf \
+    https://github.com/ultralytics/assets/releases/download/v0.0.0/Arial.Unicode.ttf \
+    /home/${USERNAME}/.config/Ultralytics/
+
+# Install ultralytics YOLOv8. Tested with version v8.2.35.
+# Onnx Runtime 1.18.0 for python 3.10
+# optional python versions. numpy==1.23.5 onnx==1.14.0 urllib3==1.26.18 Bottleneck==1.3.4
+RUN sudo apt-get update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -y --no-install-recommends \
+    git-lfs gcc git zip curl htop libgl1 libglib2.0-0 libpython3-dev gnupg g++ libusb-1.0-0 && \
+#    mkdir -p /home/${USERNAME}/.config/Ultralytics && cd /home/${USERNAME}/.config/Ultralytics && wget https://github.com/ultralytics/assets/releases/download/v0.0.0/Arial.ttf && wget https://github.com/ultralytics/assets/releases/download/v0.0.0/Arial.Unicode.ttf && \
+    mkdir -p /home/${USERNAME}/sdks && cd /home/${USERNAME}/sdks && git clone https://github.com/ultralytics/ultralytics && \
+    cd ultralytics && \
+    python3 -m pip install --upgrade pip wheel && \
+    python3 -m pip install --no-cache-dir "lap==0.4.0" "typing-extensions>=4.4.0" "onnx==1.14.0" "Bottleneck==1.3.6" "onnxsim>=0.4.33" "onnxslim==0.1.28" "numexpr==2.8.4" "tensorflowjs==3.9.0" && \
+    cd /home/${USERNAME}/sdks/ultralytics/ && python3 -m pip install --no-cache-dir -e ".[export]" && \
+#    cd /home/${USERNAME}/sdks/ultralytics/ && python3 -m pip install --no-cache -e . && \
+    python3 -m pip install "numpy==1.23.5"
+#    export OMP_NUM_THREADS=1 && \
+
+#----------------------------------
+# Install YOLOv8 ROS packages
+#----------------------------------
+RUN cd ${BUILD_HOME}/src && \
+    GIT_LFS_SKIP_SMUDGE=1 git clone -b humble-devel https://github.com/Alpaca-zip/ultralytics_ros.git && \
+    git clone https://github.com/mgonzs13/yolov8_ros.git && \
+    sudo rm -rf /var/lib/apt/lists/*
+
+##-----------------------------------------------
+## Install/build Open3D (https://www.open3d.org/docs/release/arm.html). Doesn't work in dusty-nv container but works in Nvidia Isaac ROS container.
+## To build, see https://www.open3d.org/docs/release/arm.html#building-open3d-python-wheel-with-docker
+## todo: compile from source with CUDA support
+##-----------------------------------------------
+## Todo: test Open3D and Open3D ML with cuda 12.2 then Install CUDA 11.8 if it fails
+##RUN sudo apt update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -y --no-install-recommends \
+##    cuda-11-8 cuda-toolkit-11-8 cuda-compat-11-8 cuda-cudart-11-8 cuda-libraries-11-8
+#
+RUN python3 -m pip install "open3d==0.18.0"
+#RUN sudo apt update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -y --no-install-recommends python3-open3d
+## todo: use rislab's fork till the main Open3D repo fixes Jetson CUDA compilation issues
+## Todo: test realsense support
+#RUN python3 -m pip uninstall open3d && \
+#    cd /sdks && \
+#    git clone https://github.com/isl-org/Open3D.git && \
+#    cd Open3D && \
+#    ./util/install_deps_ubuntu.sh assume-yes && \
+#    mkdir build && cd build && git clone https://github.com/isl-org/Open3D-ML.git && \
+#    export PATH=${PATH}:/usr/local/cuda-12.2/bin && export CUDACXX=/usr/local/cuda-12.2/bin/nvcc && \
+#    cmake  \
+#      -DBUILD_CUDA_MODULE=ON \
+#      -DCUDAToolkit_ROOT=/usr/local/cuda-12.2/lib \
+#      -DCMAKE_BUILD_TYPE=Release \
+#      -DBUILD_GUI=ON \
+#      -DGLIBCXX_USE_CXX11_ABI=OFF \
+#      -DBUILD_PYTORCH_OPS=ON \
+#      -DBUILD_TENSORFLOW_OPS=OFF \
+#      -DBUNDLE_OPEN3D_ML=ON \
+#      -DBUILD_LIBREALSENSE=OFF \
+#      -DBUILD_JUPYTER_EXTENSION:BOOL=TRUE \
+#      -DBUILD_WEBRTC=ON \
+#      -DCMAKE_INSTALL_PREFIX=/sdks/open3d_install \
+#      -DPython3_ROOT=/usr/bin/python3 \
+#      -DOPEN3D_ML_ROOT=Open3D-ML \
+#      .. && \
+#    make -j$(($(nproc)-1)) && \
+#    make install-pip-package && sudo make install
+
+# Silence setup.py and easy_install deprecation warnings caused by colcon and setuptools (https://github.com/colcon/colcon-core/issues/454#issuecomment-1142649390)
+ENV PYTHONWARNINGS=ignore:::setuptools.command.install,ignore:::setuptools.command.easy_install,ignore:::pkg_resources,ignore:::setuptools.command.develop
+
+WORKDIR $BUILD_HOME
+#ARG MAKEFLAGS="-j4 -l4"
+ARG SKIPPED_ROSDEP_KEYS="lio_sam rf2o_laser_odometry cmake_modules pacmod3_msgs  python3-open3d open3d \
+    librealsense2 realsense2_camera libopencv-dev  libopencv-contrib-dev libopencv-imgproc-dev python-opencv python3-opencv"
+
 # Build ROS2 Workspace
 RUN cd ${BUILD_HOME} && \
     sudo apt update && \
     rosdep update && \
     source /opt/ros/${ROS_DISTRO}/setup.bash && \
-    rosdep install --from-paths src --ignore-src -r -y -q --os=ubuntu:jammy --rosdistro=humble
+    rosdep install --from-paths src --ignore-src -r -y -q --os=ubuntu:jammy --rosdistro=humble --skip-keys "${SKIPPED_ROSDEP_KEYS}"
+
+ENV CCACHE_DIR=/home/${USERNAME}/.ccache
+ENV CCACHE_TEMPDIR=/home/${USERNAME}/.ccache
 
 RUN source /opt/ros/${ROS_DISTRO}/setup.bash && \
 #    source /autoware/install/setup.bash && \
@@ -360,11 +599,19 @@ RUN source /opt/ros/${ROS_DISTRO}/setup.bash && \
     ' -Wno-dev' ' --no-warn-unused-cli' \
     ' -DCMAKE_BUILD_TYPE=Release' ' -DCMAKE_EXPORT_COMPILE_COMMANDS=ON' \
     ' -DCMAKE_LIBRARY_PATH=/usr/local/cuda/lib64/stubs' \
-    ' -DCMAKE_CXX_FLAGS="-Wl,--allow-shlib-undefined"  -DDOWNLOAD_ARTIFACTS=ON'
+    ' -DCMAKE_CXX_FLAGS="-Wl,--allow-shlib-undefined"  -DDOWNLOAD_ARTIFACTS=ON' \
+    ' -DRTABMAP_SYNC_MULTI_RGBD=ON'
+
+ENV PATH=${PATH}:/home/${USERNAME}/.local/bin
 
 RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /home/${USERNAME}/.bashrc && \
 #    echo "source /autoware/install/setup.bash" >> /home/${USERNAME}/.bashrc && \
     echo "source ${BUILD_HOME}/install/setup.bash" >> /home/${USERNAME}/.bashrc && \
+    echo 'export PYTHONPATH=${PYTHONPATH}:/usr/local/lib:/usr/lib/python3/dist-packages' >> ~/.bashrc && \
+    echo 'export ACADOS_ROOT=/home/${USERNAME}/sdks/acados' >> ~/.bashrc && \
+    echo 'export ACADOS_PATH=${ACADOS_ROOT}' >> ~/.bashrc && \
+    echo 'export ACADOS_SOURCE_DIR=${ACADOS_ROOT}' >> ~/.bashrc && \
+    echo 'export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${ACADOS_ROOT}/lib' >> ~/.bashrc && \
     echo "sudo sysctl -w net.core.rmem_max=2147483647" >> /home/${USERNAME}/.bashrc && \
     echo "sudo sysctl -w net.ipv4.ipfrag_time=3" >> /home/${USERNAME}/.bashrc && \
     echo "sudo sysctl -w net.ipv4.ipfrag_high_thresh=134217728" >> /home/${USERNAME}/.bashrc && \
@@ -373,3 +620,5 @@ RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /home/${USERNAME}/.bashrc
 # Todo: add aliases
 
 WORKDIR /home/${USERNAME}
+
+RUN sudo apt update && sudo apt install gedit nautilus nano -y

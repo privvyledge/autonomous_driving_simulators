@@ -9,6 +9,7 @@ data_files = [
     ('share/' + package_name, ['package.xml']),
     (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
     (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
+    (os.path.join('share', package_name, 'config'), glob('config/*.json')),
     (os.path.join('share', package_name, 'rviz'), glob('rviz/*.rviz'))
 ]
 
@@ -52,13 +53,9 @@ setup(
         entry_points={
             'console_scripts': [
                 'coupled_kinematic_casadi = autonomous_driving_simulators.coupled_kinematic_casadi:main',
-                'coupled_kinematic_do_mpc = autonomous_driving_simulators.coupled_kinematic_do_mpc:main',
-                'coupled_kinematic_acados = autonomous_driving_simulators.coupled_kinematic_acados:main',
-                'kinematic_dompc_simulator = autonomous_driving_simulators.simulator.do_mpc.do_mpc_simulator_node:main',
-                'kinematic_acados_simulator = autonomous_driving_simulators.simulator.acados.acados_simulator_node:main',
-                'twist_to_ackermann = autonomous_driving_simulators.twist_to_ackermann_drive:main',
-                'waypoint_recorder = autonomous_driving_simulators.waypoint_recorder:main',
-                'waypoint_loader = autonomous_driving_simulators.waypoint_loader:main',
             ],
         },
+        scripts=[
+            'scripts/CarlaUE4.sh',
+        ],
 )
