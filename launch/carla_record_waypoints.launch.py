@@ -89,7 +89,7 @@ def launch_setup(context, *args, **kwargs):
     simulation_tick_rate = LaunchConfiguration('simulation_tick_rate', default='30')
     hardware_acceleration_driver = LaunchConfiguration('hardware_acceleration_driver', default='cuda')
     audio_passthrough = LaunchConfiguration('audio_passthrough', default='False')
-    headless_rendering = LaunchConfiguration('headless_rendering', default='True')
+    headless_rendering = LaunchConfiguration('headless_rendering', default='False')  # True
     graphics_quality = LaunchConfiguration('graphics_quality', default='Epic')
 
     ''' Carla ROS Bridge parameters '''
@@ -114,14 +114,14 @@ def launch_setup(context, *args, **kwargs):
 
     publish_fixed_goal_pose = LaunchConfiguration('publish_fixed_goal_pose', default='True')
     goal_pose = LaunchConfiguration('goal_pose', default='0.0, 0.0, 0.0, 0.0, 0.0, 0.0')  # x, y, z, yaw, pitch, roll
-    go_to_goal_carla = LaunchConfiguration('go_to_goal_carla', default='True')
+    start_global_planner_carla = LaunchConfiguration('start_global_planner_carla', default='True')
     control_loop_rate = LaunchConfiguration('control_loop_rate', default='0.05')
     input_msg_is_stamped = LaunchConfiguration('input_msg_is_stamped', default='True')
 
     joy_config = LaunchConfiguration('joy_config', default=joy_teleop_config_file)
     mux_config = LaunchConfiguration('mux_config', default=mux_config_file)
 
-    record_waypoints = LaunchConfiguration('record_waypoints', default='True')
+    record_waypoints = LaunchConfiguration('record_waypoints', default='False')
     mpc_config = LaunchConfiguration('mpc_config', default=mpc_parameters_file)
     mpc_build_directory = LaunchConfiguration('mpc_build_directory', default=mpc_model_path)
 
@@ -265,9 +265,9 @@ def launch_setup(context, *args, **kwargs):
                         'In the order: x, y, z, yaw, pitch, roll. Angles should be specified in degrees.'
     )
 
-    go_to_goal_carla_la = DeclareLaunchArgument(
-            name='go_to_goal_carla',
-            default_value=go_to_goal_carla,
+    start_global_planner_carla_la = DeclareLaunchArgument(
+            name='start_global_planner_carla',
+            default_value=start_global_planner_carla,
             description='Whether to launch Carlas global path planner and publish waypoints to the desired goal.'
     )
 
@@ -334,7 +334,7 @@ def launch_setup(context, *args, **kwargs):
         sigterm_timeout_la,
         publish_fixed_goal_pose_la,
         goal_pose_la,
-        go_to_goal_carla_la,
+        start_global_planner_carla_la,
         control_loop_rate_la,
         input_msg_is_stamped_la,
         joy_la,
@@ -526,7 +526,7 @@ def launch_setup(context, *args, **kwargs):
             package='carla_waypoint_publisher',
             executable='carla_waypoint_publisher',
             name='carla_waypoint_publisher',
-            condition=IfCondition(go_to_goal_carla),
+            condition=IfCondition(start_global_planner_carla),
             output='screen',
             emulate_tty='True',
             parameters=[

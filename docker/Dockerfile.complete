@@ -99,21 +99,22 @@ RUN sudo apt-get update -y && DEBIAN_FRONTEND="noninteractive" sudo apt-get inst
     sudo rm -rf /var/lib/apt/lists/*
 
 # Set Python3 as default
-RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 1
-RUN python3 -m pip install -U pip setuptools wheel
+RUN sudo update-alternatives --install /usr/bin/python python /usr/bin/python3 1
+RUN python3 -m pip install -U pip "setuptools<71.0.0" wheel
 
 ## Fix ALSA Lib issues (https://github.com/carla-simulator/carla/issues/2820#issuecomment-624093857)
 #RUN echo pcm.!default { type plug slave.pcm "null" } >> /etc/asound.conf && \
 #    echo pcm.!default { type plug slave.pcm "null" } >> /home/${USER}/.asoundrc
 
 # Create a non root user
-RUN useradd --create-home --shell /bin/bash -g root -G sudo,video ${USERNAME} && \
-        echo "$USERNAME:$USERNAME" | chpasswd && \
-        usermod --shell /bin/bash $USERNAME && \
-        usermod -aG sudo,video $USERNAME && \
-        usermod  --uid $USER_UID $USERNAME && \
-        echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/$USERNAME && \
-        chmod 0440 /etc/sudoers.d/$USERNAME
+RUN groupadd --gid $USER_GID $USERNAME && \
+    useradd --create-home --shell /bin/bash -g ${USERNAME} -G sudo,video ${USERNAME} --home /home/${USERNAME} --uid $USER_UID && \
+    echo "$USERNAME:$USERNAME" | chpasswd && \
+    usermod --shell /bin/bash $USERNAME && \
+    usermod -aG sudo,video $USERNAME && \
+    usermod  --uid $USER_UID $USERNAME && \
+    echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/$USERNAME && \
+    chmod 0440 /etc/sudoers.d/$USERNAME
 
 USER ${USERNAME}
 WORKDIR /home/${USERNAME}
@@ -335,12 +336,13 @@ RUN mkdir -p /home/${USERNAME}/sdks
 # Install MPC related packages (Casadi, Acados, Do MPC)
 RUN python3 -m pip install do-mpc casadi
 ARG ACADOS_OPENMP_PARALLELIZATION_ENABLED=ON
-#ENV ACADOS_ROOT=/home/${USERNAME}/sdks/acados
-#ENV ACADOS_PATH=${ACADOS_ROOT}
-#ENV ACADOS_SOURCE_DIR=${ACADOS_ROOT}
+#ARG ACADOS_NUM_THREADS=2
+ENV ACADOS_ROOT=/home/${USERNAME}/sdks/acados
+ENV ACADOS_PATH=${ACADOS_ROOT}
+ENV ACADOS_SOURCE_DIR=${ACADOS_ROOT}
 
-RUN mkdir -p "/home/${USERNAME}/sdks" && cd "/home/${USERNAME}/sdks" && \
-    export ACADOS_ROOT='/home/${USERNAME}/sdks/acados' && export ACADOS_PATH=${ACADOS_ROOT} && export ACADOS_SOURCE_DIR=${ACADOS_ROOT} && \
+RUN mkdir -p /home/${USERNAME}/sdks && cd /home/${USERNAME}/sdks && \
+#    export ACADOS_ROOT=/home/${USERNAME}/sdks/acados && export ACADOS_PATH=${ACADOS_ROOT} && export ACADOS_SOURCE_DIR=${ACADOS_ROOT} && \
     git clone https://github.com/acados/acados.git && cd acados && \
     git submodule update --recursive --init && \
     mkdir build && cd build && \
@@ -349,15 +351,17 @@ RUN mkdir -p "/home/${USERNAME}/sdks" && cd "/home/${USERNAME}/sdks" && \
         -DACADOS_WITH_OSQP=ON \
         -DACADOS_INSTALL_DIR=${ACADOS_ROOT} \
         -DCMAKE_BUILD_TYPE=Release \
+#        -DACADOS_NUM_THREADS=${ACADOS_NUM_THREADS} \
         -DACADOS_WITH_OPENMP=${ACADOS_OPENMP_PARALLELIZATION_ENABLED} .. && \
-    sudo make install -j$(nproc) && \
+    make -j$(($(nproc)-1)) && \
+    sudo make install -j$(($(nproc)-1)) && \
     python3 -m pip install -U "numpy==1.23.5" && \
-    python3 -m pip install -e ${ACADOS_ROOT}/interfaces/acados_template && \
+    python3 -m pip install --use-pep517 --user -e ${ACADOS_ROOT}/interfaces/acados_template && \
     sudo apt update && sudo apt install -y rustc cargo && cd ../bin && \
     git clone https://github.com/acados/tera_renderer.git && cd tera_renderer && cargo build --verbose --release && \
     cp target/release/t_renderer ${ACADOS_ROOT}/bin
 
-#ENV LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${ACADOS_ROOT}/lib
+ENV LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${ACADOS_ROOT}/lib
 
 #COPY --chown=${USERNAME}:${USERNAME} . /home/${USERNAME}/src
 RUN cd ${BUILD_HOME}/src && \
@@ -603,15 +607,12 @@ RUN source /opt/ros/${ROS_DISTRO}/setup.bash && \
     ' -DRTABMAP_SYNC_MULTI_RGBD=ON'
 
 ENV PATH=${PATH}:/home/${USERNAME}/.local/bin
+ENV PYTHONPATH=${PYTHONPATH}:/usr/local/lib:/usr/lib/python3/dist-packages
 
 RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /home/${USERNAME}/.bashrc && \
 #    echo "source /autoware/install/setup.bash" >> /home/${USERNAME}/.bashrc && \
     echo "source ${BUILD_HOME}/install/setup.bash" >> /home/${USERNAME}/.bashrc && \
-    echo 'export PYTHONPATH=${PYTHONPATH}:/usr/local/lib:/usr/lib/python3/dist-packages' >> ~/.bashrc && \
-    echo 'export ACADOS_ROOT=/home/${USERNAME}/sdks/acados' >> ~/.bashrc && \
-    echo 'export ACADOS_PATH=${ACADOS_ROOT}' >> ~/.bashrc && \
-    echo 'export ACADOS_SOURCE_DIR=${ACADOS_ROOT}' >> ~/.bashrc && \
-    echo 'export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${ACADOS_ROOT}/lib' >> ~/.bashrc && \
+#    echo 'export PYTHONPATH=${PYTHONPATH}:/usr/local/lib:/usr/lib/python3/dist-packages' >> ~/.bashrc && \
     echo "sudo sysctl -w net.core.rmem_max=2147483647" >> /home/${USERNAME}/.bashrc && \
     echo "sudo sysctl -w net.ipv4.ipfrag_time=3" >> /home/${USERNAME}/.bashrc && \
     echo "sudo sysctl -w net.ipv4.ipfrag_high_thresh=134217728" >> /home/${USERNAME}/.bashrc && \
