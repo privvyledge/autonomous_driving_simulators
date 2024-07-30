@@ -98,17 +98,13 @@ RUN sudo apt-get update -y && DEBIAN_FRONTEND="noninteractive" sudo apt-get inst
     libvulkan1 && \
     sudo rm -rf /var/lib/apt/lists/*
 
-# Set Python3 as default
-RUN sudo update-alternatives --install /usr/bin/python python /usr/bin/python3 1
-RUN python3 -m pip install -U pip "setuptools<71.0.0" wheel
-
-## Fix ALSA Lib issues (https://github.com/carla-simulator/carla/issues/2820#issuecomment-624093857)
+## Fix Carla ALSA Lib issues (https://github.com/carla-simulator/carla/issues/2820#issuecomment-624093857)
 #RUN echo pcm.!default { type plug slave.pcm "null" } >> /etc/asound.conf && \
 #    echo pcm.!default { type plug slave.pcm "null" } >> /home/${USER}/.asoundrc
 
 # Create a non root user
 RUN groupadd --gid $USER_GID $USERNAME && \
-    useradd --create-home --shell /bin/bash -g ${USERNAME} -G sudo,video ${USERNAME} --home /home/${USERNAME} --uid $USER_UID && \
+    useradd --create-home --shell /bin/bash -g ${USERNAME} -G sudo,video,audio ${USERNAME} --home /home/${USERNAME} --uid $USER_UID && \
     echo "$USERNAME:$USERNAME" | chpasswd && \
     usermod --shell /bin/bash $USERNAME && \
     usermod -aG sudo,video $USERNAME && \
@@ -117,6 +113,11 @@ RUN groupadd --gid $USER_GID $USERNAME && \
     chmod 0440 /etc/sudoers.d/$USERNAME
 
 USER ${USERNAME}
+
+# Set Python3 as default
+RUN sudo update-alternatives --install /usr/bin/python python /usr/bin/python3 1
+RUN python3 -m pip install -U pip "setuptools<71.0.0" wheel
+
 WORKDIR /home/${USERNAME}
 
 # Install Carla
@@ -261,27 +262,24 @@ RUN cd /home/${USERNAME}/Downloads/ && \
 # Install Autoware
 RUN sudo rm -rf /autoware && \
     cd ${BUILD_HOME}/src && \
-#    git clone https://github.com/privvyledge/autoware.f1tenth.git autoware && cd autoware && \
-#    chmod +x install_autoware_dependencies.sh && ./install_autoware_dependencies.sh && \
-#    cd .. && rm -rf autoware && \
     git clone https://github.com/autowarefoundation/autoware.git -b humble && cd autoware && \
     mkdir src  && \
     vcs import src < autoware.repos
 
-USER root
+#USER root
 # Use ansible to download Autoware artifacts
 RUN sudo apt-get -y update && \
     cd ${BUILD_HOME}/src/autoware && \
     python3 -m pip install --user pipx && \
     python3 -m pipx ensurepath && \
-    export PATH="${PIPX_BIN_DIR:=$HOME/.local/bin}:$PATH" && \
+    export PATH="${PIPX_BIN_DIR:=/home/$USERNAME/.local/bin}:$PATH" && \
     pipx install --include-deps --force "ansible==6.*" && \
     ansible-galaxy collection install -f -r "ansible-galaxy-requirements.yaml" && \
-    ansible-playbook autoware.dev_env.download_artifacts -e "data_dir=/home/${USERNAME}/autoware_data" && \
+    ansible-playbook autoware.dev_env.download_artifacts -e "data_dir=/home/${USERNAME}/autoware_data" --become-user=$USERNAME --become --user=$USERNAME && \
     python3 -m pip uninstall -y ansible ansible-core && \
     sudo apt-get autoremove -y && rm -rf "$HOME"/.cache && \
     chown -R $USERNAME /home/${USERNAME}/autoware_data
-USER ${USERNAME}
+#USER ${USERNAME}
 
 # Install Carla ROS2 Bridge
 #RUN cd ${BUILD_HOME}/src && \
@@ -522,6 +520,7 @@ ADD https://github.com/ultralytics/assets/releases/download/v0.0.0/Arial.ttf \
 RUN sudo apt-get update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -y --no-install-recommends \
     git-lfs gcc git zip curl htop libgl1 libglib2.0-0 libpython3-dev gnupg g++ libusb-1.0-0 && \
 #    mkdir -p /home/${USERNAME}/.config/Ultralytics && cd /home/${USERNAME}/.config/Ultralytics && wget https://github.com/ultralytics/assets/releases/download/v0.0.0/Arial.ttf && wget https://github.com/ultralytics/assets/releases/download/v0.0.0/Arial.Unicode.ttf && \
+    sudo chown -R $USERNAME /home/${USERNAME}/.config && \
     mkdir -p /home/${USERNAME}/sdks && cd /home/${USERNAME}/sdks && git clone https://github.com/ultralytics/ultralytics && \
     cd ultralytics && \
     python3 -m pip install --upgrade pip wheel && \

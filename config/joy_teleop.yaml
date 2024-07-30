@@ -18,7 +18,7 @@ joy_teleop:
           scale: 0.0
           offset: 0.0
         drive-steering_angle:
-          axis: 2  # 2
+          axis: 3  # 2 for Dualshock 4, 3 for Logitech F710
           scale: 0.0
           offset: 0.0
 
@@ -33,7 +33,7 @@ joy_teleop:
           scale: 15.0  # max speed [m/s]: todo
           offset: 0.0
         drive-steering_angle:
-          axis: 2  # 2 for PS4, 3 for Logitech F710. This is actually responsible for controlling the actuator
+          axis: 3  # 2 for PS4, 3 for Logitech F710. This is actually responsible for controlling the actuator
           scale: 1.22173  # max steering angle [rads]. todo
           offset: 0.0
 

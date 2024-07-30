@@ -1,7 +1,7 @@
 """
 Records Pose and Velocity information from a Carla odometry pseudosensor.
 
-Usage: ros2 launch autonomous_driving_simulators carla_record_waypoints.launch.py
+Usage: ros2 launch autonomous_driving_simulators carla_bringup.launch.py
 
 Steps:
     1. Launch Carla
@@ -21,6 +21,7 @@ Steps:
     8. Ctrl-C to stop recording
 
 Todo:
+    * rename to carla_bringup since it does more than just record waypoints now
     
 """
 import os
@@ -39,7 +40,7 @@ from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, Exec
 from launch.conditions import IfCondition, UnlessCondition, LaunchConfigurationEquals, LaunchConfigurationNotEquals
 from launch_xml.launch_description_sources import XMLLaunchDescriptionSource
 from launch.launch_description_sources import PythonLaunchDescriptionSource, FrontendLaunchDescriptionSource
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import get_package_share_directory, get_package_prefix
 from nav2_common.launch import RewrittenYaml, ReplaceString
 
 
@@ -53,6 +54,7 @@ def carla_shutdown_callback(_launch_context):
     )
     return [shutdown_process]
 
+
 def launch_setup(context, *args, **kwargs):
     # Get package directories
 
@@ -60,9 +62,10 @@ def launch_setup(context, *args, **kwargs):
 
     # Setup default directories.
     carla_simulator_script_path = os.path.join(
-                        get_package_share_directory('autonomous_driving_simulators'),  # os.environ["HOME"])
-                        "scripts",
-                        "CarlaUE4.sh")
+            get_package_prefix('autonomous_driving_simulators'),  # os.environ["HOME"])
+            "lib",
+            "autonomous_driving_simulators",
+            "CarlaUE4.sh")
 
     joy_teleop_config_file = os.path.join(
             get_package_share_directory('autonomous_driving_simulators'),
@@ -86,13 +89,14 @@ def launch_setup(context, *args, **kwargs):
     ''' Unreal Engine Carla parameters '''
     use_sim_time = LaunchConfiguration('use_sim_time', default='True')
     carla_simulator_script = LaunchConfiguration('carla_simulator_script', default=carla_simulator_script_path)
-    simulation_tick_rate = LaunchConfiguration('simulation_tick_rate', default='30')
+    simulation_tick_rate = LaunchConfiguration('simulation_tick_rate', default='20')
     hardware_acceleration_driver = LaunchConfiguration('hardware_acceleration_driver', default='cuda')
     audio_passthrough = LaunchConfiguration('audio_passthrough', default='False')
-    headless_rendering = LaunchConfiguration('headless_rendering', default='False')  # True
+    headless_rendering = LaunchConfiguration('headless_rendering', default='True')  # True
     graphics_quality = LaunchConfiguration('graphics_quality', default='Epic')
 
     ''' Carla ROS Bridge parameters '''
+    launch_simulator = LaunchConfiguration('launch_simulator', default='True')
     host = LaunchConfiguration('host', default='localhost')
     port = LaunchConfiguration('port', default='2000')
     timeout = LaunchConfiguration('timeout', default='10')
@@ -103,33 +107,56 @@ def launch_setup(context, *args, **kwargs):
     fixed_delta_seconds = LaunchConfiguration('fixed_delta_seconds', default='0.05')
     town = LaunchConfiguration('town', default='Town01')
     register_all_sensors = LaunchConfiguration('register_all_sensors', default='True')
-    ego_vehicle_role_name = LaunchConfiguration('role_name', default=["hero", "ego_vehicle", "hero0", "hero1", "hero2",
-                                                                      "hero3", "hero4", "hero5", "hero6", "hero7",
-                                                                      "hero8", "hero9"])
+    ego_vehicle_role_name = LaunchConfiguration('ego_vehicle_role_name',
+                                                default=["hero", "ego_vehicle", "hero0", "hero1", "hero2",
+                                                         "hero3", "hero4", "hero5", "hero6", "hero7",
+                                                         "hero8", "hero9"])
     role_name = LaunchConfiguration('role_name', default='ego_vehicle')
     spawn_point = LaunchConfiguration('spawn_point')
     target_speed = LaunchConfiguration('target_speed', default='8.33')  # in m/s
     avoid_risk = LaunchConfiguration('avoid_risk', default='True')
     sigterm_timeout = LaunchConfiguration('sigterm_timeout', default='15')
+    view = LaunchConfiguration('view', default='True')
 
     publish_fixed_goal_pose = LaunchConfiguration('publish_fixed_goal_pose', default='True')
-    goal_pose = LaunchConfiguration('goal_pose', default='0.0, 0.0, 0.0, 0.0, 0.0, 0.0')  # x, y, z, yaw, pitch, roll
-    start_global_planner_carla = LaunchConfiguration('start_global_planner_carla', default='True')
+    # goal pose: x, y, z, yaw, pitch, roll. Default: 0.0, 0.0, 0.0, 0.0, 0.0, 0.0'
+    goal_pose = LaunchConfiguration('goal_pose', default='127.4,195.4,0.0,180.0,0,0')
+    start_global_planner_carla = LaunchConfiguration('start_global_planner_carla',
+                                                     default='True')  # todo: either use carla global planner or waypoint publisher from CSV
     control_loop_rate = LaunchConfiguration('control_loop_rate', default='0.05')
     input_msg_is_stamped = LaunchConfiguration('input_msg_is_stamped', default='True')
 
     joy_config = LaunchConfiguration('joy_config', default=joy_teleop_config_file)
     mux_config = LaunchConfiguration('mux_config', default=mux_config_file)
 
-    record_waypoints = LaunchConfiguration('record_waypoints', default='False')
+    record_waypoints = LaunchConfiguration('record_waypoints', default='True')
+    launch_custom_controller = LaunchConfiguration('launch_custom_controller', default='False')
+    custom_controller = LaunchConfiguration('custom_controller', default='mpc')
     mpc_config = LaunchConfiguration('mpc_config', default=mpc_parameters_file)
     mpc_build_directory = LaunchConfiguration('mpc_build_directory', default=mpc_model_path)
+    publish_twist = LaunchConfiguration('publish_twist', default='False')
+
+    carla_waypoint_following_kp_lateral = LaunchConfiguration('carla_waypoint_following_kp_lateral', default='0.9')
+    carla_waypoint_following_ki_lateral = LaunchConfiguration('carla_waypoint_following_ki_lateral', default='0.0')
+    carla_waypoint_following_kd_lateral = LaunchConfiguration('carla_waypoint_following_kd_lateral', default='0.0')
+    carla_waypoint_following_kp_longitudinal = LaunchConfiguration('carla_waypoint_following_kp_longitudinal',
+                                                                   default='0.206')
+    carla_waypoint_following_ki_longitudinal = LaunchConfiguration('carla_waypoint_following_ki_longitudinal',
+                                                                   default='0.0206')
+    carla_waypoint_following_kd_longitudinal = LaunchConfiguration('carla_waypoint_following_kd_longitudinal',
+                                                                   default='0.515')
 
     # Declare launch arguments
     use_sim_time_la = DeclareLaunchArgument(
             name='use_sim_time',
             default_value=use_sim_time,
             description='Use simulated clock.'
+    )
+
+    launch_simulator_la = DeclareLaunchArgument(
+            name='launch_simulator',
+            default_value=launch_simulator,
+            description='Whether to launch the simulator. If False, make sure to start up carla somewhere else.'
     )
 
     carla_simulator_script_la = DeclareLaunchArgument(
@@ -201,13 +228,15 @@ def launch_setup(context, *args, **kwargs):
     synchronous_mode_wait_for_vehicle_control_command_la = DeclareLaunchArgument(
             name='synchronous_mode_wait_for_vehicle_control_command',
             default_value=synchronous_mode_wait_for_vehicle_control_command,
-            description='When enabled, pauses the tick until a vehicle control is completed (only in synchronous mode)'
+            description='When enabled, pauses the tick until a vehicle control is completed (only in synchronous mode).'
+                        ' Set to true for slow controllers.'
     )
 
     fixed_delta_seconds_la = DeclareLaunchArgument(
             name='fixed_delta_seconds',
             default_value=fixed_delta_seconds,
-            description='Simulation time (delta seconds) between simulation steps'
+            description='Simulation time (delta seconds) between simulation steps. '
+                        'Should be the same as or close to 1 / FPS that Carla is launched with.'
     )
 
     town_la = DeclareLaunchArgument(
@@ -234,8 +263,9 @@ def launch_setup(context, *args, **kwargs):
 
     spawn_point_la = DeclareLaunchArgument(
             name='spawn_point',
-            default_value='127.4,-195.4,2,0,0,180'
-    )
+            default_value='0.8798897862434387, -1.6753101348876953,4.0,-0.035736084,0.0263918489,-88.118721',
+            description='Where to spawn the car. Make sure Z is higher than 0 else the spawning'
+                        ' will fail due to collision with the ground. Default: 127.4,-195.4,2,0,0,180')
 
     target_speed_la = DeclareLaunchArgument(
             'target_speed',
@@ -250,6 +280,11 @@ def launch_setup(context, *args, **kwargs):
     sigterm_timeout_la = DeclareLaunchArgument(
             name='sigterm_timeout',
             default_value=sigterm_timeout
+    )
+
+    view_la = DeclareLaunchArgument(
+            name='view',
+            default_value=view
     )
 
     publish_fixed_goal_pose_la = DeclareLaunchArgument(
@@ -297,6 +332,16 @@ def launch_setup(context, *args, **kwargs):
             default_value=record_waypoints,
             description='Whether to record the vehicles trajectory as waypoints.')
 
+    launch_custom_controller_la = DeclareLaunchArgument(
+            'launch_custom_controller',
+            default_value=launch_custom_controller,
+            description='Whether to launch one of my controllers.')
+
+    custom_controller_la = DeclareLaunchArgument(
+            'custom_controller',
+            default_value=custom_controller,
+            description='Which custom controller to launch, purepursuit, mpc, etc.')
+
     mpc_config_la = DeclareLaunchArgument(
             'mpc_config',
             default_value=mpc_config,
@@ -307,10 +352,34 @@ def launch_setup(context, *args, **kwargs):
             default_value=mpc_build_directory,
             description='The path to build/compile the MPC optimization problem.')
 
+    publish_twist_la = DeclareLaunchArgument(
+            'publish_twist',
+            default_value=publish_twist,
+            description='True: publish twist message, False: publish ackermann message')
+
+    carla_waypoint_following_kp_lateral_la = DeclareLaunchArgument(
+            'carla_waypoint_following_kp_lateral',
+            default_value=carla_waypoint_following_kp_lateral)
+    carla_waypoint_following_ki_lateral_la = DeclareLaunchArgument(
+            'carla_waypoint_following_ki_lateral',
+            default_value=carla_waypoint_following_ki_lateral)
+    carla_waypoint_following_kd_lateral_la = DeclareLaunchArgument(
+            'carla_waypoint_following_kd_lateral',
+            default_value=carla_waypoint_following_kd_lateral)
+    carla_waypoint_following_kp_longitudinal_la = DeclareLaunchArgument(
+            'carla_waypoint_following_kp_longitudinal',
+            default_value=carla_waypoint_following_kp_longitudinal)
+    carla_waypoint_following_ki_longitudinal_la = DeclareLaunchArgument(
+            'carla_waypoint_following_ki_longitudinal',
+            default_value=carla_waypoint_following_ki_longitudinal)
+    carla_waypoint_following_kd_longitudinal_la = DeclareLaunchArgument(
+            'carla_waypoint_following_kd_longitudinal',
+            default_value=carla_waypoint_following_kd_longitudinal)
 
     # Add launch arguments to a list
     launch_args = [
         use_sim_time_la,
+        launch_simulator_la,
         carla_simulator_script_la,
         simulation_tick_rate_la,
         hardware_acceleration_driver_la,
@@ -332,6 +401,7 @@ def launch_setup(context, *args, **kwargs):
         target_speed_la,
         avoid_risk_la,
         sigterm_timeout_la,
+        view_la,
         publish_fixed_goal_pose_la,
         goal_pose_la,
         start_global_planner_carla_la,
@@ -342,6 +412,15 @@ def launch_setup(context, *args, **kwargs):
         record_waypoints_la,
         mpc_config_la,
         mpc_build_directory_la,
+        launch_custom_controller_la,
+        custom_controller_la,
+        publish_twist_la,
+        carla_waypoint_following_kp_lateral_la,
+        carla_waypoint_following_ki_lateral_la,
+        carla_waypoint_following_kd_lateral_la,
+        carla_waypoint_following_kp_longitudinal_la,
+        carla_waypoint_following_ki_longitudinal_la,
+        carla_waypoint_following_kd_longitudinal_la,
     ]
 
     """ Get launch context """
@@ -385,8 +464,12 @@ def launch_setup(context, *args, **kwargs):
 
     if audio_passthrough_string.lower() == 'false':
         audio_passthrough_string = '-nosound'
+        audio_environment_variable = SetEnvironmentVariable(name='SDL_AUDIODRIVER', value='dsp')
+        launch_args.append(audio_environment_variable)
     else:
         audio_passthrough_string = ''
+        # audio_environment_variable = SetEnvironmentVariable(name='SDL_AUDIODRIVER', value='alsa')
+        # launch_args.append(audio_environment_variable)
 
     if headless_rendering_string.lower() == 'true':
         headless_rendering_string = '-RenderOffScreen'
@@ -401,43 +484,44 @@ def launch_setup(context, *args, **kwargs):
         graphics_quality_string = ''
 
     """ Launch Nodes """
-    # todo: get path to carla executable as a configuration variable
-    # Todo: launch as a python node using subprocess
+    # Todo: launch as a python node using subprocess for better error handling and shutdown.
     # todo: implement https://github.com/carla-simulator/carla/issues/4230
-    carla_launch = ExecuteProcess(
-            cmd=[[
-                "bash ",
-                # os.path.join(
-                #         get_package_share_directory('autonomous_driving_simulators'),  # os.environ["HOME"])
-                #         "scripts",
-                #         "CarlaUE4.sh"), # todo: remove after testing carla_simulator_script_string
-                carla_simulator_script_string,
-                f" {hardware_acceleration_driver_string}"
-                f" {audio_passthrough_string}"
-                f" -benchmark -fps={simulation_tick_rate_string}"
-                f" {headless_rendering_string}"
-                f" {graphics_quality_string}"
-            ]],
-            name="carla_simulator",
-            output="both",
-            on_exit=[
-                OpaqueFunction(function=carla_shutdown_callback)
-            ],
-            shell=True
-    )
-
-    # carla_launch = Node(
-    #         package='autonomous_driving_simulators',
-    #         executable='CarlaUE4.sh',
-    #         name='carla_simulator',
-    #         output='screen',
-    #         # arguments=[f" {hardware_acceleration_driver_string}"
-    #         #            f" {audio_passthrough_string}"
-    #         #            f" -benchmark -fps={simulation_tick_rate_string}"
-    #         #            f" {headless_rendering_string}"
-    #         #            f" {graphics_quality_string}"],
-    #         # on_exit=OpaqueFunction(function=carla_shutdown_callback),
+    # carla_launch = ExecuteProcess(
+    #         cmd=[[
+    #             "bash ",
+    #             carla_simulator_script_string,
+    #             f" {hardware_acceleration_driver_string}",
+    #             f" {audio_passthrough_string}",
+    #             f" -benchmark -fps={simulation_tick_rate_string}",
+    #             f" {headless_rendering_string}",
+    #             f" {graphics_quality_string}",
+    #         ]],
+    #         name="carla_simulator",
+    #         output="both",
+    #         on_exit=[
+    #             OpaqueFunction(function=carla_shutdown_callback)
+    #         ],
+    #         shell=True,
+    #         condition=IfCondition(launch_simulator),
+    #         emulate_tty=True
     # )
+
+    carla_launch = Node(
+            package='autonomous_driving_simulators',
+            executable='CarlaUE4.sh',
+            name='carla_simulator',
+            output='screen',
+            condition=IfCondition(launch_simulator),
+            arguments=[
+                f"{hardware_acceleration_driver_string}",
+                f"{audio_passthrough_string}",
+                f"-benchmark -fps={simulation_tick_rate_string}",
+                f"{headless_rendering_string}",
+                f"{graphics_quality_string}"
+            ],
+            on_exit=OpaqueFunction(function=carla_shutdown_callback),
+            emulate_tty=True
+    )
 
     carla_ros_bridge = Node(
             package='carla_ros_bridge',
@@ -490,19 +574,32 @@ def launch_setup(context, *args, **kwargs):
                  "std_msgs/msg/Float64", data_string, "--qos-durability", "transient_local"],
             name='topic_pub_target_speed')
 
-    carla_ad_agent_launch = IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(
-                    os.path.join(get_package_share_directory(
-                            'carla_ad_agent'), 'carla_ad_agent.launch.py')
-            ),
-            launch_arguments={
-                'role_name': role_name,
-                'avoid_risk': avoid_risk
-            }.items()
+    # carla_ad_agent_launch = IncludeLaunchDescription(
+    #         PythonLaunchDescriptionSource(
+    #                 os.path.join(get_package_share_directory(
+    #                         'carla_ad_agent'), 'carla_ad_agent.launch.py')
+    #         ),
+    #         launch_arguments={
+    #             'role_name': role_name,
+    #             'avoid_risk': avoid_risk
+    #         }.items()
+    # )
+
+    carla_ad_agent_launch = Node(
+            package='carla_ad_agent',
+            executable='ad_agent',
+            name=['carla_ad_agent_', role_name],
+            output='screen',
+            parameters=[
+                {
+                    'role_name': role_name,
+                    'avoid_risk': avoid_risk
+                }
+            ]
     )
 
     goal_pose_publisher_node = TimerAction(
-            period=5.0,
+            period=10.0,
             actions=[
                 ExecuteProcess(
                         output="screen",
@@ -511,7 +608,7 @@ def launch_setup(context, *args, **kwargs):
                             # "/goal_pose" or f"/carla/{role_name_string}/goal"
                             "ros2", "topic", "pub", f"/carla/{role_name_string}/goal",
                             "geometry_msgs/msg/PoseStamped", goal_pose_string, "--once",
-                             ],
+                        ],
                         name='goal_pose_publisher')
             ]
     )
@@ -527,6 +624,7 @@ def launch_setup(context, *args, **kwargs):
             executable='carla_waypoint_publisher',
             name='carla_waypoint_publisher',
             condition=IfCondition(start_global_planner_carla),
+            # todo: either use carla global planner or waypoint publisher from CSV
             output='screen',
             emulate_tty='True',
             parameters=[
@@ -550,16 +648,21 @@ def launch_setup(context, *args, **kwargs):
             ),
             launch_arguments={
                 'role_name': role_name
-            }.items()
+            }.items(),
+            condition=IfCondition(view)
     )
 
+    ''' Launches a low level PID to convert speed, acceleration and steering commands to actuation commands.
+    When tuning the cascade from MPC to PID use this PID.
+     '''
     carla_ackermann_control_node = Node(
             package='carla_ackermann_control',
             executable='carla_ackermann_control_node',
             name=f'carla_ackermann_control_{role_name_string}',
             output='screen',
+            condition=UnlessCondition(publish_twist),
             parameters=[
-                Path(get_package_share_directory('carla_ackermann_control'), "settings.yaml"),
+                Path(get_package_share_directory('autonomous_driving_simulators'), "PID_low_level.yaml"),
                 {
                     'use_sim_time': use_sim_time,
                     'role_name': role_name,
@@ -568,7 +671,8 @@ def launch_setup(context, *args, **kwargs):
                 }
             ],
             remappings=[
-                (f'/carla/{role_name_string}/ackermann_cmd', '/drive')
+                # todo: add launch context to set to /drive if either joy teleop or ackermann mux is off
+                (f'/carla/{role_name_string}/ackermann_cmd', f'/ackermann_cmd_{role_name_string}')
             ]
     )
 
@@ -578,6 +682,7 @@ def launch_setup(context, *args, **kwargs):
             name=f"carla_twist_to_control_{role_name_string}",
             output='screen',
             emulate_tty='True',
+            condition=IfCondition(publish_twist),
             parameters=[
                 {
                     'use_sim_time': use_sim_time,
@@ -590,7 +695,7 @@ def launch_setup(context, *args, **kwargs):
             ]
     )
 
-    # todo: add configs, launch configuration and ifcondition
+    # todo: add teleop ifcondition
     joy_node = Node(
             package='joy',
             executable='joy_node',
@@ -620,14 +725,13 @@ def launch_setup(context, *args, **kwargs):
             ]
     )
 
-    # todo: setup ackermann mux
     ackermann_mux_node = Node(
             package='ackermann_mux',
             executable='ackermann_mux',
             name='ackermann_mux',
             parameters=[mux_config],
             remappings=[('ackermann_cmd_out', 'ackermann_drive'),
-                        ('ackermann_cmd', '/vehicle/ackermann_cmd')]
+                        ('ackermann_cmd', f'/ackermann_cmd_{role_name_string}')]
     )
 
     waypoint_recording_node = Node(
@@ -648,9 +752,30 @@ def launch_setup(context, *args, **kwargs):
             ]
     )
 
-    """
-    ros2 launch trajectory_following_ros2 mpc.launch.py use_sim_time:=True generate_mpc_model:=True horizon:=25 mpc_toolbox:=acados build_with_cython:=True
-    """
+    # low level PID used to follow waypoints. Note that this is different from the low-level Cascaded PID of
+    # carla ackermann control even though they are doing the same thing.
+    # Therefore, when tuning the cascade from MPC to PID use the ackermann PID instead
+    carla_waypoint_following_node = Node(
+            package='carla_ad_agent',
+            executable='local_planner',
+            name=['carla_local_planner_', role_name],
+            output='screen',
+            condition=UnlessCondition(launch_custom_controller),
+            parameters=[
+                {
+                    'use_sim_time': True,
+                    'role_name': role_name,
+                    'Kp_lateral': carla_waypoint_following_kp_lateral,
+                    'Ki_lateral': carla_waypoint_following_ki_lateral,
+                    'Kd_lateral': carla_waypoint_following_kd_lateral,
+                    'Kp_longitudinal': carla_waypoint_following_kp_longitudinal,
+                    'Ki_longitudinal': carla_waypoint_following_ki_longitudinal,
+                    'Kd_longitudinal': carla_waypoint_following_kd_longitudinal,
+                    'control_time_step': control_loop_rate,
+                }
+            ]
+    )
+
     custom_mpc_node = IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                     os.path.join(
@@ -658,6 +783,7 @@ def launch_setup(context, *args, **kwargs):
                             'launch', 'mpc.launch.py'
                     )
             ),
+            condition=LaunchConfigurationEquals('custom_controller', 'mpc'),
             launch_arguments={
                 'use_sim_time': use_sim_time,
                 'params_file': mpc_config,
@@ -666,13 +792,13 @@ def launch_setup(context, *args, **kwargs):
                 'model_directory': mpc_build_directory,
                 'horizon': '25',
                 'frequency': '20.0',
-                'sample_time': '0.05',
+                'sample_time': '0.05',  # control_loop_rate
                 'prediction_time': '1.5',
-                'publish_twist_topic': 'True',
+                'publish_twist_topic': publish_twist,
                 'wheelbase': '2.87528',
                 'max_steer': '69.99999284118222',
                 'min_steer': '-69.99999284118222',
-                'max_steer_rate': '352.9411764706',
+                'max_steer_rate': '120.0',
                 'max_speed': '10.5',
                 'min_speed': '-10.5',
                 'max_accel': '3.0',
@@ -681,16 +807,72 @@ def launch_setup(context, *args, **kwargs):
                 'Rd_diagonal': '[10., 100.]',
                 'Q_diagonal': '[1.0, 1.0, 1.0, 0.01]',
                 'Qf_diagonal': '[0.04, 0.04, 0.1, 0.01]',
-                'max_iteration': '15',
+                'max_iterations': '15',
                 'termination_condition': '0.001',
                 'stage_cost_type': 'NONLINEAR_LS',
-                'distance_tolerance': '0.2',
-                'speed_tolerance': '0.5',
-                'load_waypoints': 'True',
+                'distance_tolerance': '5.0',
+                'speed_tolerance': '5.0',
+                'load_waypoints': 'True',  # todo: either use carla global planner or waypoint publisher from CSV
                 'waypoints_csv': '/home/carla/shared_dir/waypoints/carla/waypoints.csv',  # todo
                 'mpc_toolbox': 'acados',
-                'ode_type': 'continuous_kinematic_coupled'
+                'ode_type': 'continuous_kinematic_coupled',
+                # 'desired_speed': target_speed,
+                'odom_topic': f'/carla/{role_name_string}/odometry',
+                'ackermann_cmd_topic': '/drive',
+                # f'/ackermann_cmd_{role_name_string}' or f'/carla/{role_name_string}/ackermann_cmd'
+                'twist_topic': '/twist',  # f'/carla/{role_name_string}/twist'
+                'acceleration_topic': '/accel/local',  # f'/carla/{role_name_string}/twist'
+                'path_topic': '/trajectory/path',
+                'speed_topic': '/trajectory/speed',
             }.items()
+    )
+
+    custom_purepursuit_node = Node(
+            package='trajectory_following_ros2',
+            executable='purepursuit',
+            name=f'purepursuit_{role_name_string}',
+            output='screen',
+            condition=LaunchConfigurationEquals('custom_controller', 'purepursuit'),
+            parameters=[
+                {
+                    'use_sim_time': use_sim_time,
+                    'file_path': '/home/carla/shared_dir/waypoints/carla/waypoints.csv',  # todo
+                    'path_source': 'file',
+                    'control_rate': 20.0,
+                    'goal_tolerance': 5.0,
+                    'lookahead_distance': 7.0,
+                    'min_lookahead': 4.35,
+                    'max_lookahead': 15.0,
+                    'adaptive_lookahead_gain': 4.0,
+                    'use_adaptive_lookahead': False,
+                    'wheelbase': 2.87528,
+                    'max_steer': 69.99999284118222,
+                    'min_steer': -69.99999284118222,
+                    'max_steer_rate': 352.9411764706,
+                    'max_speed': 15.0,
+                    # 'min_speed': '-10.5',
+                    'speed_Kp': 1.0,
+                    'speed_Ki': 0.0,
+                    'speed_Kd': 0.0,
+                    'desired_speed': target_speed,
+                    'odom_topic': f'/carla/{role_name_string}/odometry',
+                    'ackermann_cmd_topic': '/drive',
+                    # f'/ackermann_cmd_{role_name_string}' or f'/carla/{role_name_string}/ackermann_cmd'
+                    'twist_topic': '/twist',  # f'/carla/{role_name_string}/twist'
+                    'acceleration_topic': '/accel/local',  # f'/carla/{role_name_string}/twist'
+                    'path_topic': '/trajectory/path',
+                    'speed_topic': '/trajectory/speed',
+                    'speedup_first_lookup': True,
+                }
+            ]
+    )
+
+    custom_controller_group = GroupAction(
+            condition=IfCondition(launch_custom_controller),
+            actions=[
+                custom_mpc_node,
+                custom_purepursuit_node
+            ]
     )
 
     ld = launch_args + [
@@ -702,6 +884,7 @@ def launch_setup(context, *args, **kwargs):
         goal_pose_publisher_node,
         carla_goal_pose_relay_node,
         carla_waypoint_publisher_node,
+        carla_waypoint_following_node,
         carla_manual_control,
         carla_ackermann_control_node,
         carla_twist_to_control_node,
@@ -709,7 +892,7 @@ def launch_setup(context, *args, **kwargs):
         joy_teleop_node,
         ackermann_mux_node,
         waypoint_recording_node,
-        custom_mpc_node,
+        custom_controller_group
     ]
     return ld
 
