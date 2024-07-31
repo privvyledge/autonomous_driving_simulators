@@ -662,7 +662,11 @@ def launch_setup(context, *args, **kwargs):
             output='screen',
             condition=UnlessCondition(publish_twist),
             parameters=[
-                Path(get_package_share_directory('autonomous_driving_simulators'), "PID_low_level.yaml"),
+                os.path.join(
+                        get_package_share_directory('autonomous_driving_simulators'),
+                        "config",
+                        "PID_low_level.yaml"
+                ),
                 {
                     'use_sim_time': use_sim_time,
                     'role_name': role_name,
