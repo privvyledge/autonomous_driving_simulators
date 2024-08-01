@@ -57,5 +57,6 @@ setup(
         },
         scripts=[
             'scripts/CarlaUE4.sh',
+            'scripts/start_carla_simulator.py'
         ],
 )

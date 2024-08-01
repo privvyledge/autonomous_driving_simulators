@@ -334,7 +334,7 @@ RUN mkdir -p /home/${USERNAME}/sdks
 # Install MPC related packages (Casadi, Acados, Do MPC)
 RUN python3 -m pip install do-mpc casadi
 ARG ACADOS_OPENMP_PARALLELIZATION_ENABLED=ON
-#ARG ACADOS_NUM_THREADS=2
+ARG ACADOS_NUM_THREADS=6
 ENV ACADOS_ROOT=/home/${USERNAME}/sdks/acados
 ENV ACADOS_PATH=${ACADOS_ROOT}
 ENV ACADOS_SOURCE_DIR=${ACADOS_ROOT}
@@ -349,7 +349,7 @@ RUN mkdir -p /home/${USERNAME}/sdks && cd /home/${USERNAME}/sdks && \
         -DACADOS_WITH_OSQP=ON \
         -DACADOS_INSTALL_DIR=${ACADOS_ROOT} \
         -DCMAKE_BUILD_TYPE=Release \
-#        -DACADOS_NUM_THREADS=${ACADOS_NUM_THREADS} \
+        -DACADOS_NUM_THREADS=${ACADOS_NUM_THREADS} \
         -DACADOS_WITH_OPENMP=${ACADOS_OPENMP_PARALLELIZATION_ENABLED} .. && \
     make -j$(($(nproc)-1)) && \
     sudo make install -j$(($(nproc)-1)) && \
