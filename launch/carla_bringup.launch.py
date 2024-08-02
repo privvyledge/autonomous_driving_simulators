@@ -98,7 +98,7 @@ def launch_setup(context, *args, **kwargs):
     hardware_acceleration_driver = LaunchConfiguration('hardware_acceleration_driver', default='cuda')
     audio_passthrough = LaunchConfiguration('audio_passthrough', default='False')
     headless_rendering = LaunchConfiguration('headless_rendering', default='True')  # True
-    graphics_quality = LaunchConfiguration('graphics_quality', default='Epic')
+    graphics_quality = LaunchConfiguration('graphics_quality', default='Low')
 
     ''' Carla ROS Bridge parameters '''
     launch_simulator = LaunchConfiguration('launch_simulator', default='True')
@@ -109,7 +109,7 @@ def launch_setup(context, *args, **kwargs):
     synchronous_mode = LaunchConfiguration('synchronous_mode', default='True')
     synchronous_mode_wait_for_vehicle_control_command = LaunchConfiguration(
             'synchronous_mode_wait_for_vehicle_control_command', default='False')
-    fixed_delta_seconds = LaunchConfiguration('fixed_delta_seconds', default='0.05')
+    fixed_delta_seconds = LaunchConfiguration('fixed_delta_seconds', default='0.05')  # todo: replace with 1/simulation tick rate
     town = LaunchConfiguration('town', default='Town01')
     register_all_sensors = LaunchConfiguration('register_all_sensors', default='True')
     ego_vehicle_role_name = LaunchConfiguration('ego_vehicle_role_name',
