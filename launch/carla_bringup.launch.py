@@ -94,7 +94,7 @@ def launch_setup(context, *args, **kwargs):
     carla_simulator_script = LaunchConfiguration('carla_simulator_script', default=carla_simulator_script_path)
     carla_simulator_python_script = LaunchConfiguration('carla_simulator_python_script',
                                                         default=carla_simulator_python_script_path)
-    simulation_tick_rate = LaunchConfiguration('simulation_tick_rate', default='20')
+
     hardware_acceleration_driver = LaunchConfiguration('hardware_acceleration_driver', default='cuda')
     audio_passthrough = LaunchConfiguration('audio_passthrough', default='False')
     headless_rendering = LaunchConfiguration('headless_rendering', default='True')  # True
@@ -106,10 +106,11 @@ def launch_setup(context, *args, **kwargs):
     port = LaunchConfiguration('port', default='2000')
     timeout = LaunchConfiguration('timeout', default='10')
     passive = LaunchConfiguration('passive', default='False')
+    simulation_tick_rate = LaunchConfiguration('simulation_tick_rate', default='20')
     synchronous_mode = LaunchConfiguration('synchronous_mode', default='True')
     synchronous_mode_wait_for_vehicle_control_command = LaunchConfiguration(
             'synchronous_mode_wait_for_vehicle_control_command', default='False')
-    fixed_delta_seconds = LaunchConfiguration('fixed_delta_seconds', default='0.05')  # todo: replace with 1/simulation tick rate
+    fixed_delta_seconds = LaunchConfiguration('fixed_delta_seconds', default='0.05')  # should be 1/simulation tick rate
     town = LaunchConfiguration('town', default='Town01')
     register_all_sensors = LaunchConfiguration('register_all_sensors', default='True')
     ego_vehicle_role_name = LaunchConfiguration('ego_vehicle_role_name',
@@ -178,12 +179,6 @@ def launch_setup(context, *args, **kwargs):
             description='The path to the carla launching script.'
     )
 
-    simulation_tick_rate_la = DeclareLaunchArgument(
-            name='simulation_tick_rate',
-            default_value=simulation_tick_rate,
-            description='Unreal engine graphics processing rate.'
-    )
-
     hardware_acceleration_driver_la = DeclareLaunchArgument(
             name='hardware_acceleration_driver',
             default_value=hardware_acceleration_driver,
@@ -230,6 +225,12 @@ def launch_setup(context, *args, **kwargs):
             name='passive',
             default_value=passive,
             description='When enabled, the ROS bridge will take a backseat and another client must tick the world (only in synchronous mode)'
+    )
+
+    simulation_tick_rate_la = DeclareLaunchArgument(
+            name='simulation_tick_rate',
+            default_value=simulation_tick_rate,
+            description='Unreal engine graphics processing rate, i.e FPS'
     )
 
     synchronous_mode_la = DeclareLaunchArgument(
@@ -403,6 +404,7 @@ def launch_setup(context, *args, **kwargs):
         use_sim_time_la,
         launch_simulator_la,
         carla_simulator_script_la,
+        carla_simulator_python_script_la,
         simulation_tick_rate_la,
         hardware_acceleration_driver_la,
         audio_passthrough_la,
@@ -591,7 +593,7 @@ def launch_setup(context, *args, **kwargs):
             package='autonomous_driving_simulators',
             executable='CarlaUE4.sh',
             name='carla_simulator',
-            output='screen',
+            output='log',
             condition=IfCondition(launch_simulator),
             arguments=[
                 f"{hardware_acceleration_driver_string}",
@@ -600,7 +602,7 @@ def launch_setup(context, *args, **kwargs):
                 f"{headless_rendering_string}",
                 f"{graphics_quality_string}"
             ],
-            on_exit=OpaqueFunction(function=carla_shutdown_callback),
+            # on_exit=OpaqueFunction(function=carla_shutdown_callback),
             emulate_tty=True
     )
 
@@ -608,7 +610,7 @@ def launch_setup(context, *args, **kwargs):
             package='carla_ros_bridge',
             executable='bridge',
             name='carla_ros_bridge',
-            output='screen',
+            output='log',
             emulate_tty='True',
             on_exit=launch.actions.Shutdown(),
             parameters=[
@@ -670,7 +672,7 @@ def launch_setup(context, *args, **kwargs):
             package='carla_ad_agent',
             executable='ad_agent',
             name=['carla_ad_agent_', role_name],
-            output='screen',
+            output='log',
             parameters=[
                 {
                     'role_name': role_name,
@@ -683,7 +685,7 @@ def launch_setup(context, *args, **kwargs):
             period=10.0,
             actions=[
                 ExecuteProcess(
-                        output="screen",
+                        output="log",
                         condition=IfCondition(publish_fixed_goal_pose),
                         cmd=[
                             # "/goal_pose" or f"/carla/{role_name_string}/goal"
@@ -695,7 +697,7 @@ def launch_setup(context, *args, **kwargs):
     )
 
     carla_goal_pose_relay_node = ExecuteProcess(
-            output="screen",
+            output="log",
             cmd=["ros2", "run", "topic_tools", "relay", "/goal_pose", f"/carla/{role_name_string}/goal"],
             # name='carla_goal_pose_relay'
     )
