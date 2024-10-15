@@ -98,7 +98,7 @@ def launch_setup(context, *args, **kwargs):
     hardware_acceleration_driver = LaunchConfiguration('hardware_acceleration_driver', default='cuda')
     audio_passthrough = LaunchConfiguration('audio_passthrough', default='False')
     headless_rendering = LaunchConfiguration('headless_rendering', default='True')  # True
-    graphics_quality = LaunchConfiguration('graphics_quality', default='Low')
+    graphics_quality = LaunchConfiguration('graphics_quality', default='Epic')
 
     ''' Carla ROS Bridge parameters '''
     launch_simulator = LaunchConfiguration('launch_simulator', default='True')
