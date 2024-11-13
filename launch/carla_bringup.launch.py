@@ -902,7 +902,7 @@ def launch_setup(context, *args, **kwargs):
                 'generate_mpc_model': 'True',
                 'build_with_cython': 'True',
                 'model_directory': mpc_build_directory,
-                'horizon': '25',
+                'horizon': '20',  # do_mpc: 50, acados:
                 'frequency': '20.0',
                 'sample_time': '0.05',  # control_loop_rate
                 'prediction_time': '1.5',
@@ -910,26 +910,26 @@ def launch_setup(context, *args, **kwargs):
                 'wheelbase': '2.87528',
                 'max_steer': '69.99999284118222',
                 'min_steer': '-69.99999284118222',
-                'max_steer_rate': '120.0',
+                'max_steer_rate': '360.0',
                 'max_speed': '10.5',
                 'min_speed': '-10.5',
                 'max_accel': '3.0',
                 'max_decel': '-3.0',
-                'R_diagonal': '[0.01, 0.01]',
-                'Rd_diagonal': '[10., 100.]',
-                'Q_diagonal': '[1.0, 1.0, 1.0, 0.01]',
-                'Qf_diagonal': '[0.04, 0.04, 0.1, 0.01]',
+                'R_diagonal': '[10., 100.]',
+                'Rd_diagonal': '[100., 1000.]',
+                'Q_diagonal': '[1.0, 1.0, 10.0, 0.01]',
+                'Qf_diagonal': '[0.002, 0.002, 0.0001, 0.00001]',
                 'scale_cost': 'False',
-                'max_iterations': '15',
-                'termination_condition': '0.001',
+                'max_iterations': '30',  # do_mpc: 30
+                'termination_condition': '0.0001',
                 'stage_cost_type': 'NONLINEAR_LS',
-                'distance_tolerance': '5.0',
-                'speed_tolerance': '10.0',
+                'distance_tolerance': '2.5',  # do_mpc: 2.5-5.0
+                'speed_tolerance': '5.0',
                 'load_waypoints': 'False',  # set as not "start_global_planner"
                 'waypoints_csv': '/home/carla/shared_dir/waypoints/carla/waypoints.csv',  # todo: make an argument
-                'mpc_toolbox': 'acados',  # todo: set as launch arg
+                'mpc_toolbox': 'do_mpc',  # todo: set as launch arg
                 'ode_type': 'continuous_kinematic_coupled',
-                # 'desired_speed': target_speed,
+                'desired_speed': target_speed,
                 'odom_topic': f'/carla/{role_name_string}/odometry',
                 'ackermann_cmd_topic': '/drive',
                 # f'/ackermann_cmd_{role_name_string}' or f'/carla/{role_name_string}/ackermann_cmd'

@@ -37,9 +37,6 @@ ENV ROS_DISTRO=${ROS_DISTRO}
 ENV ROS_ROOT=/opt/ros/${ROS_DISTRO}
 ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 
-ENV NVIDIA_DRIVER_CAPABILITIES=all
-ENV NVIDIA_VISIBLE_DEVICES=all
-
 # Install Sudo
 RUN apt-get update && DEBIAN_FRONTEND="noninteractive" apt-get install -yq sudo tzdata && \
     ln -fns /usr/share/zoneinfo/${TZ} /etc/localtime && echo $TZ > /etc/timezone && \
@@ -104,7 +101,7 @@ RUN sudo apt-get update -y && DEBIAN_FRONTEND="noninteractive" sudo apt-get inst
 
 # Create a non root user
 RUN groupadd --gid $USER_GID $USERNAME && \
-    useradd --create-home --shell /bin/bash -g ${USERNAME} -G sudo,video,audio ${USERNAME} --home /home/${USERNAME} --uid $USER_UID && \
+    useradd --create-home --shell /bin/bash -g ${USERNAME} -G sudo,video,audio,render ${USERNAME} --home /home/${USERNAME} --uid $USER_UID && \
     echo "$USERNAME:$USERNAME" | chpasswd && \
     usermod --shell /bin/bash $USERNAME && \
     usermod -aG sudo,video $USERNAME && \
@@ -144,11 +141,11 @@ ENV PYTHONPATH=${PYTHONPATH}:${CARLA_ROOT}/PythonAPI/carla
 ENV SCENARIO_RUNNER_ROOT=/home/${USERNAME}/scenario_runner-${CARLA_MAJOR}.${CARLA_MINOR}.${CARLA_PATCH}
 ENV SCENARIO_RUNNER_PATH=/home/${USERNAME}/scenario_runner-${CARLA_MAJOR}.${CARLA_MINOR}.${CARLA_PATCH}
 
-## todo: delete the lines below after testing ENVs
-RUN echo "export PYTHONPATH=${PYTHONPATH}:${CARLA_ROOT}/PythonAPI/carla/dist/carla-${CARLA_MAJOR}.${CARLA_MINOR}.${CARLA_PATCH}-py${PYTHON_MAJOR}.${PYTHON_MINOR}-linux-x86_64.egg" >> /home/${USERNAME}/.bashrc && \
-    echo "export PYTHONPATH=${PYTHONPATH}:${CARLA_ROOT}/PythonAPI/carla" >> /home/${USERNAME}/.bashrc && \
-    echo "export SCENARIO_RUNNER_ROOT=/home/${USERNAME}/scenario_runner-${CARLA_MAJOR}.${CARLA_MINOR}.${CARLA_PATCH}" >> /home/${USERNAME}/.bashrc && \
-    echo "export SCENARIO_RUNNER_PATH=/home/${USERNAME}/scenario_runner-${CARLA_MAJOR}.${CARLA_MINOR}.${CARLA_PATCH}" >> /home/${USERNAME}/.bashrc
+### todo: delete the lines below after testing ENVs
+#RUN echo "export PYTHONPATH=${PYTHONPATH}:${CARLA_ROOT}/PythonAPI/carla/dist/carla-${CARLA_MAJOR}.${CARLA_MINOR}.${CARLA_PATCH}-py${PYTHON_MAJOR}.${PYTHON_MINOR}-linux-x86_64.egg" >> /home/${USERNAME}/.bashrc && \
+#    echo "export PYTHONPATH=${PYTHONPATH}:${CARLA_ROOT}/PythonAPI/carla" >> /home/${USERNAME}/.bashrc && \
+#    echo "export SCENARIO_RUNNER_ROOT=/home/${USERNAME}/scenario_runner-${CARLA_MAJOR}.${CARLA_MINOR}.${CARLA_PATCH}" >> /home/${USERNAME}/.bashrc && \
+#    echo "export SCENARIO_RUNNER_PATH=/home/${USERNAME}/scenario_runner-${CARLA_MAJOR}.${CARLA_MINOR}.${CARLA_PATCH}" >> /home/${USERNAME}/.bashrc
 
 WORKDIR /home/${USERNAME}/carla_simulator
 
@@ -607,6 +604,9 @@ RUN source /opt/ros/${ROS_DISTRO}/setup.bash && \
 
 ENV PATH=${PATH}:/home/${USERNAME}/.local/bin
 ENV PYTHONPATH=${PYTHONPATH}:/usr/local/lib:/usr/lib/python3/dist-packages
+
+ENV NVIDIA_DRIVER_CAPABILITIES=all
+ENV NVIDIA_VISIBLE_DEVICES=all
 
 RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /home/${USERNAME}/.bashrc && \
 #    echo "source /autoware/install/setup.bash" >> /home/${USERNAME}/.bashrc && \

@@ -86,8 +86,8 @@
                     "id": "semantic_segmentation_front",
                     "spawn_point": {"x": 2.0, "y": 0.0, "z": 2.0, "roll": 0.0, "pitch": 0.0, "yaw": 0.0},
                     "fov": 90.0,
-                    "image_size_x": 400,
-                    "image_size_y": 70
+                    "image_size_x": 800,
+                    "image_size_y": 600
                 },
                 {
                     "type": "sensor.camera.depth",
@@ -102,8 +102,8 @@
                     "id": "dvs_front",
                     "spawn_point": {"x": 2.0, "y": 0.0, "z": 2.0, "roll": 0.0, "pitch": 0.0, "yaw": 0.0},
                     "fov": 90.0,
-                    "image_size_x": 400,
-                    "image_size_y": 70,
+                    "image_size_x": 800,
+                    "image_size_y": 600,
                     "positive_threshold": 0.3,
                     "negative_threshold": 0.3,
                     "sigma_positive_threshold": 0.0,
