@@ -97,7 +97,7 @@
 
   <!-- Perception -->
   <group if="$(var launch_perception)">
-    <include file="$(find-pkg-share autonomous_driving_simulators)/launch/autoware/autoware_perception.launch.xml">
+    <include file="$(find-pkg-share autonomous_driving_simulators)/launch/autoware/autoware_perception_component.launch.xml">
       <arg name="data_path" value="$(var data_path)"/>
     </include>
   </group>
