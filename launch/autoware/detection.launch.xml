@@ -128,7 +128,7 @@
   <!-- Detector -->
   <group if="$(var switch/detector/camera_lidar)">
     <!-- Camera-Lidar detectors -->
-    <include file="$(find-pkg-share tier4_perception_launch)/launch/object_recognition/detection/detector/camera_lidar_detector.launch.xml">
+    <include file="$(find-pkg-share autonomous_driving_simulators)/launch/autoware/camera_lidar_detector.launch.xml">
       <arg name="number_of_cameras" value="$(var number_of_cameras)"/>
       <arg name="input/camera0/image" value="$(var input/camera0/image)"/>
       <arg name="input/camera0/info" value="$(var input/camera0/info)"/>
