@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+Launch the following nodes:
+    1. TensorRT detector
+    2. Ground segmentation
+    3. Euclidean clustering
+    4. Occupancy grid map
+-->
+
+<launch>
+
+
+</launch>

@@ -279,7 +279,8 @@ def launch_setup(context, *args, **kwargs):
             name='spawn_point',
             default_value='0.8798897862434387, -1.6753101348876953,4.0,-0.035736084,0.0263918489,-88.118721',
             description='Where to spawn the car. Make sure Z is higher than 0 else the spawning'
-                        ' will fail due to collision with the ground. Default: 127.4,-195.4,2,0,0,180')
+                        ' will fail due to collision with the ground. Set to "None" for a random spawn point. '
+                        'Default: 127.4,-195.4,2,0,0,180')
 
     target_speed_la = DeclareLaunchArgument(
             'target_speed',

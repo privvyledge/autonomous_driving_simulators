@@ -7,12 +7,22 @@ package_name = 'autonomous_driving_simulators'
 data_files = [
     ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
     ('share/' + package_name, ['package.xml']),
-    # (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
-    (os.path.join('share', package_name, 'launch'), glob(os.path.join('launch', '*launch.[pxy][yma]*'))),
+    # (os.path.join('share', package_name, 'launch'), glob('launch/**/*.launch.*', recursive=True)),  # uncomment this if not using the recursive method below
     (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
     (os.path.join('share', package_name, 'config'), glob('config/*.json')),
     (os.path.join('share', package_name, 'rviz'), glob('rviz/*.rviz'))
 ]
+
+# to recursively add all launch files and keep the subdirectory structure
+for root, dirs, files in os.walk('launch'):
+    # Get the relative path for each subdirectory
+    install_dir = os.path.join('share', package_name, root)
+    # Get the list of all launch files in the current subdirectory
+    launch_files = [os.path.join(root, f) for f in files if f.endswith(
+            ('.launch.py', '.launch.xml', '.launch.yml', '.launch.yaml'))]
+    if launch_files:
+        # Add each subdirectory and its files to data_files
+        data_files.append((install_dir, launch_files))
 
 
 def package_files(data_files, directory_list):
