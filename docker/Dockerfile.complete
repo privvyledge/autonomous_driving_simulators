@@ -546,7 +546,7 @@ RUN sudo apt-get update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install
 #----------------------------------
 RUN cd ${BUILD_HOME}/src && \
     GIT_LFS_SKIP_SMUDGE=1 git clone -b humble-devel https://github.com/Alpaca-zip/ultralytics_ros.git && \
-    git clone https://github.com/mgonzs13/yolov8_ros.git && \
+    git clone https://github.com/mgonzs13/yolo_ros.git && \
     sudo rm -rf /var/lib/apt/lists/*
 
 ##-----------------------------------------------

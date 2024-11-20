@@ -633,10 +633,11 @@ def launch_setup(context, *args, **kwargs):
             #     (f'/carla/{role_name_string}/rgb_front/camera_info', '/sensing/camera/traffic_light/camera_info'),
             #     (f'/carla/{role_name_string}/rgb_front/image', '/sensing/camera/traffic_light/image_raw'),
             #     (f'/carla/{role_name_string}/gnss', '/sensing/gnss/ublox/nav_sat_fix'),
-            #     (f'/carla/{role_name_string}/tamagawa/imu_link', f'/carla/{role_name_string}/imu'),
             #     (f'/carla/{role_name_string}/imu', '/sensing/imu/tamagawa/imu_raw'),
-            #     (f'/carla/{role_name_string}/velodyne_top', f'/carla/{role_name_string}/lidar'),
             #     (f'/carla/{role_name_string}/lidar', '/sensing/lidar/top/pointcloud_raw'),
+            #     (f'/carla/{role_name_string}/odometry', '/localization/kinematic_state'),
+            #     # (f'/carla/{role_name_string}/tamagawa/imu_link', f'/carla/{role_name_string}/imu'),
+            #     # (f'/carla/{role_name_string}/velodyne_top', f'/carla/{role_name_string}/lidar'),
             # ]
     )
 

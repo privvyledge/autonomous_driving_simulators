@@ -10,7 +10,7 @@
     # choose the input sensor type for each object type
     # "lidar", "radar", "camera" are available
     main_sensor_type: "lidar"
-    sub_sensor_type: "radar"
+    sub_sensor_type: "camera"
 
     # tracker settings
     tracker_state_parameter:
