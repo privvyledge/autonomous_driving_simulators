@@ -20,6 +20,11 @@ Steps:
         iii. Move the car using the GUI and manual control
     8. Ctrl-C to stop recording
 
+Todo:
+    * add obstacle launching
+        * Dynamic obstacles using traffic manager: python3 <path_to_this_script>/generate_traffic.py --number-of-vehicles 50 --number-of-walkers 10 --hybrid --safe --respawn --asynch
+        * Static obstacles: use obstacles.json
+
 """
 import os
 import sys
@@ -98,15 +103,15 @@ def launch_setup(context, *args, **kwargs):
     hardware_acceleration_driver = LaunchConfiguration('hardware_acceleration_driver', default='cuda')
     audio_passthrough = LaunchConfiguration('audio_passthrough', default='False')
     headless_rendering = LaunchConfiguration('headless_rendering', default='True')  # True
-    graphics_quality = LaunchConfiguration('graphics_quality', default='Epic')
+    graphics_quality = LaunchConfiguration('graphics_quality', default='Low')
 
     ''' Carla ROS Bridge parameters '''
     launch_simulator = LaunchConfiguration('launch_simulator', default='True')
     host = LaunchConfiguration('host', default='localhost')
     port = LaunchConfiguration('port', default='2000')
-    timeout = LaunchConfiguration('timeout', default='10')
+    timeout = LaunchConfiguration('timeout', default='40')
     passive = LaunchConfiguration('passive', default='False')
-    simulation_tick_rate = LaunchConfiguration('simulation_tick_rate', default='20')
+    simulation_tick_rate = LaunchConfiguration('simulation_tick_rate', default='20')  # todo: rename to FPS
     synchronous_mode = LaunchConfiguration('synchronous_mode', default='True')
     synchronous_mode_wait_for_vehicle_control_command = LaunchConfiguration(
             'synchronous_mode_wait_for_vehicle_control_command', default='False')
@@ -122,7 +127,7 @@ def launch_setup(context, *args, **kwargs):
 
     spawn_point = LaunchConfiguration('spawn_point')
     target_speed = LaunchConfiguration('target_speed', default='8.33')  # in m/s
-    avoid_risk = LaunchConfiguration('avoid_risk', default='False')
+    avoid_risk = LaunchConfiguration('avoid_risk', default='True')
     publish_fixed_goal_pose = LaunchConfiguration('publish_fixed_goal_pose', default='True')
     goal_pose = LaunchConfiguration('goal_pose', default='127.4,195.4,0.0,180.0,0,0')
     start_global_planner_carla = LaunchConfiguration('start_global_planner_carla',
@@ -641,6 +646,10 @@ def launch_setup(context, *args, **kwargs):
             # ]
     )
 
+    # https://carla.readthedocs.io/projects/ros-bridge/en/latest/carla_spawn_objects/
+    # https://carla.readthedocs.io/en/latest/bp_library/#vehicle
+    # https://carla.readthedocs.io/en/latest/core_sensors/#types-of-sensors
+
     carla_spawn_objects_launch = IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                     os.path.join(get_package_share_directory(
@@ -649,7 +658,9 @@ def launch_setup(context, *args, **kwargs):
             launch_arguments={
                 'objects_definition_file': get_package_share_directory(
                         'autonomous_driving_simulators') + '/config/objects.json',  # todo: make this a launch argument
-                spawn_point_param_name: spawn_point
+                spawn_point_param_name: spawn_point,
+                'spawn_point_ego_vehicle': spawn_point,
+                'role_name': role_name
             }.items()
     )
 
