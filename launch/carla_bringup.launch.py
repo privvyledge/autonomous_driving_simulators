@@ -75,6 +75,9 @@ def launch_setup(context, *args, **kwargs):
             "autonomous_driving_simulators",
             "start_carla_simulator.py")
 
+    objects_definition_json = get_package_share_directory(
+                        'autonomous_driving_simulators') + '/config/obstacles.json'  # Default: objects.json. Collision avoidance: obstacles.json
+
     joy_teleop_config_file = os.path.join(
             get_package_share_directory('autonomous_driving_simulators'),
             'config',  # config/vehicle
@@ -90,8 +93,11 @@ def launch_setup(context, *args, **kwargs):
     mpc_parameters_file = os.path.join(
             get_package_share_directory('autonomous_driving_simulators'), 'config', 'mpc_parameters.yaml')
 
+    waypoints_csv_file_path = os.path.join(
+            get_package_share_directory('autonomous_driving_simulators'), 'data', 'waypoints.csv')
+
     # mpc_model_path = os.path.join(get_package_share_directory('autonomous_driving_simulators'), 'data', 'mpc')
-    mpc_model_path = '/home/carla/shared_dir/mpc/carla'
+    mpc_model_path = Path.home() / 'shared_dir' /'mpc'/ 'carla'
 
     # Setup launch configuration variables
     ''' Unreal Engine Carla parameters '''
@@ -99,6 +105,7 @@ def launch_setup(context, *args, **kwargs):
     carla_simulator_script = LaunchConfiguration('carla_simulator_script', default=carla_simulator_script_path)
     carla_simulator_python_script = LaunchConfiguration('carla_simulator_python_script',
                                                         default=carla_simulator_python_script_path)
+    objects_definition_file = LaunchConfiguration('objects_definition_file', default=objects_definition_json)
 
     hardware_acceleration_driver = LaunchConfiguration('hardware_acceleration_driver', default='cuda')
     audio_passthrough = LaunchConfiguration('audio_passthrough', default='False')
@@ -135,6 +142,7 @@ def launch_setup(context, *args, **kwargs):
     publish_waypoints_from_csv = LaunchConfiguration('publish_waypoints_from_csv', default='False')
     launch_custom_controller = LaunchConfiguration('launch_custom_controller', default='False')
     record_waypoints = LaunchConfiguration('record_waypoints', default='False')
+    waypoints_csv_file = LaunchConfiguration('waypoints_csv_file', default=waypoints_csv_file_path)
 
 
     custom_controller = LaunchConfiguration('custom_controller', default='mpc')
@@ -182,6 +190,13 @@ def launch_setup(context, *args, **kwargs):
             name='carla_simulator_python_script',
             default_value=carla_simulator_python_script,
             description='The path to the carla launching script.'
+    )
+
+    objects_definition_file_la = DeclareLaunchArgument(
+            name='objects_definition_file',
+            default_value=objects_definition_file,
+            description='The path to the objects definition file. Use objects.json for simple tests without obstacles '
+                        'and use obstacles.json for e.g collision avoidance.'
     )
 
     hardware_acceleration_driver_la = DeclareLaunchArgument(
@@ -356,6 +371,11 @@ def launch_setup(context, *args, **kwargs):
             default_value=record_waypoints,
             description='Whether to record the vehicles trajectory as waypoints.')
 
+    waypoints_csv_file_la = DeclareLaunchArgument(
+            'waypoints_csv_file',
+            default_value=waypoints_csv_file,
+            description='Path to save/load the current/recorded waypoints.')
+
     launch_custom_controller_la = DeclareLaunchArgument(
             'launch_custom_controller',
             default_value=launch_custom_controller,
@@ -411,6 +431,7 @@ def launch_setup(context, *args, **kwargs):
         launch_simulator_la,
         carla_simulator_script_la,
         carla_simulator_python_script_la,
+        objects_definition_file_la,
         simulation_tick_rate_la,
         hardware_acceleration_driver_la,
         audio_passthrough_la,
@@ -441,6 +462,7 @@ def launch_setup(context, *args, **kwargs):
         joy_la,
         mux_la,
         record_waypoints_la,
+        waypoints_csv_file_la,
         mpc_config_la,
         publish_waypoints_from_csv_la,
         mpc_build_directory_la,
@@ -656,8 +678,7 @@ def launch_setup(context, *args, **kwargs):
                             'carla_spawn_objects'), 'carla_example_ego_vehicle.launch.py')
             ),
             launch_arguments={
-                'objects_definition_file': get_package_share_directory(
-                        'autonomous_driving_simulators') + '/config/objects.json',  # todo: make this a launch argument
+                'objects_definition_file': objects_definition_file,
                 spawn_point_param_name: spawn_point,
                 'spawn_point_ego_vehicle': spawn_point,
                 'role_name': role_name
@@ -744,7 +765,7 @@ def launch_setup(context, *args, **kwargs):
             output='screen',
             parameters=[
                 {'use_sim_time': use_sim_time},
-                {'file_path': '/home/carla/shared_dir/waypoints/carla/waypoints.csv'},  # todo: make an argument},
+                {'file_path': waypoints_csv_file},
                 # {'global_frame': 'map'}
             ],
             # arguments=['--ros-args', '--log-level', log_level],
@@ -865,8 +886,8 @@ def launch_setup(context, *args, **kwargs):
             parameters=[
                 {
                     'use_sim_time': True,
-                    'file_path': '/home/carla/shared_dir/waypoints/carla/waypoints.csv',  # todo
-                    'save_interval': 1,
+                    'file_path': waypoints_csv_file,
+                    'save_interval': 1.0,
                     'odom_topic': f'/carla/{role_name_string}/odometry',
                     'target_frame_id': 'map',
                     'save_if_transform_fails': True
@@ -898,6 +919,42 @@ def launch_setup(context, *args, **kwargs):
             ]
     )
 
+    traj_track_settings = {
+        'do_mpc': {
+            'mpc_toolbox': 'do_mpc',  # do_mpc, acados, casadi. todo: set as launch arg
+            'horizon': '50',
+            'max_iterations': '30',
+            'R_diagonal': '[10., 100.]',
+            'Rd_diagonal': '[100., 1000.]',
+            'Q_diagonal': '[1.0, 1.0, 10.0, 0.01]',
+            'Qf_diagonal': '[0.002, 0.002, 0.0001, 0.00001]',
+            'distance_tolerance': '2.5',  # do_mpc: 2.5-5.0
+            'speed_tolerance': '5.0',
+        },
+        'acados': {
+            'mpc_toolbox': 'acados',  # do_mpc, acados, casadi. todo: set as launch arg
+            'horizon': '20',
+            'max_iterations': '30',
+            'R_diagonal': '[10., 100.]',
+            'Rd_diagonal': '[100., 1000.]',
+            'Q_diagonal': '[1.0, 1.0, 10.0, 0.01]',
+            'Qf_diagonal': '[0.002, 0.002, 0.0001, 0.00001]',
+            'distance_tolerance': '10.0',  # do_mpc: 2.5-5.0
+            'speed_tolerance': '5.0',
+        },
+        'casadi': {
+            'mpc_toolbox': 'casadi',  # do_mpc, acados, casadi. todo: set as launch arg
+            'horizon': '20',
+            'max_iterations': '30',
+            'R_diagonal': '[10., 100.]',
+            'Rd_diagonal': '[100., 1000.]',
+            'Q_diagonal': '[1.0, 1.0, 10.0, 0.01]',
+            'Qf_diagonal': '[0.002, 0.002, 0.0001, 0.00001]',
+            'distance_tolerance': '2.5',  # do_mpc: 2.5-5.0
+            'speed_tolerance': '5.0',
+        }
+    }
+    mpc_toolbox = 'casadi'
     # todo: rename path topic to match carlas waypoint/path topic
     custom_mpc_node = IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
@@ -915,7 +972,7 @@ def launch_setup(context, *args, **kwargs):
                 'generate_mpc_model': 'True',
                 'build_with_cython': 'True',
                 'model_directory': mpc_build_directory,
-                'horizon': '20',  # do_mpc: 50, acados:
+                # 'horizon': '50',  # do_mpc: 50, acados: 20
                 'frequency': '20.0',
                 'sample_time': '0.05',  # control_loop_rate
                 'prediction_time': '1.5',
@@ -928,19 +985,19 @@ def launch_setup(context, *args, **kwargs):
                 'min_speed': '-10.5',
                 'max_accel': '3.0',
                 'max_decel': '-3.0',
-                'R_diagonal': '[10., 100.]',
-                'Rd_diagonal': '[100., 1000.]',
-                'Q_diagonal': '[1.0, 1.0, 10.0, 0.01]',
-                'Qf_diagonal': '[0.002, 0.002, 0.0001, 0.00001]',
-                'scale_cost': 'False',
-                'max_iterations': '30',  # do_mpc: 30
+                # 'R_diagonal': '[10., 100.]',
+                # 'Rd_diagonal': '[100., 1000.]',
+                # 'Q_diagonal': '[1.0, 1.0, 10.0, 0.01]',
+                # 'Qf_diagonal': '[0.002, 0.002, 0.0001, 0.00001]',
+                'scale_cost': 'True',
+                # 'max_iterations': '30',  # do_mpc: 30
                 'termination_condition': '0.0001',
                 'stage_cost_type': 'NONLINEAR_LS',
-                'distance_tolerance': '2.5',  # do_mpc: 2.5-5.0
-                'speed_tolerance': '5.0',
+                # 'distance_tolerance': '2.5',  # do_mpc: 2.5-5.0
+                # 'speed_tolerance': '5.0',
                 'load_waypoints': 'False',  # set as not "start_global_planner"
                 'waypoints_csv': '/home/carla/shared_dir/waypoints/carla/waypoints.csv',  # todo: make an argument
-                'mpc_toolbox': 'do_mpc',  # todo: set as launch arg
+                # 'mpc_toolbox': 'acados',  # do_mpc, acados, casadi. todo: set as launch arg
                 'ode_type': 'continuous_kinematic_coupled',
                 'desired_speed': target_speed,
                 'odom_topic': f'/carla/{role_name_string}/odometry',
@@ -950,6 +1007,7 @@ def launch_setup(context, *args, **kwargs):
                 'acceleration_topic': '/accel/local',  # f'/carla/{role_name_string}/twist'
                 'path_topic': '/trajectory/path',  # todo: rename to /carla/ego_vehicle/waypoints
                 'speed_topic': '/trajectory/speed',
+                **traj_track_settings.get(mpc_toolbox)
             }.items()
     )
 
@@ -1001,6 +1059,49 @@ def launch_setup(context, *args, **kwargs):
             ]
     )
 
+    # depth and/or stereo to Pointcloud
+    '''
+    Working: 
+        i. rtabmap (with/without color) 
+            a. depth to pointcloud: /carla/ego_vehicle/downsampled_cloud_from_depth
+            b. pointcloud to depth, i.e register_depth when fixed_frame_id not set: /carla/ego_vehicle/realigned_depth_to_color/depthimage
+        ii. depth_image_proc (without color): pointcloud output "points_from_depth_proc"
+    '''
+    stereo_and_depth_image_processing_node = IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(PathJoinSubstitution(
+                    [get_package_share_directory('autonomous_driving_simulators'), 'launch', 'stereo_and_depth_image_processing.launch.py']
+            )),
+            # condition=IfCondition([imu_only]),
+            launch_arguments={
+                'use_sim_time': use_sim_time,
+                'use_namespace': 'True',  # use_namespace,
+                # 'namespace': namespace if (use_namespace_str.lower() == 'true' and namespace_str) else '',  # namespace,
+                'namespace': 'carla/ego_vehicle' if ('True'.lower() == 'true' and 'carla/ego_vehicle') else '',  # namespace,
+                'camera_name': '',
+                'approx_sync': 'False',
+                'queue_size': '10',  # default: 10
+                'depthimage_to_pointcloud': 'True',
+                'stereo_to_pointcloud': 'False',
+                'left_image_topic': 'rgb_left/image',  # 'carla/ego_vehicle/rgb_left/image'
+                'right_image_topic': 'rgb_right/image',  # 'carla/ego_vehicle/rgb_right/image'
+                'rgb_image_topic': 'rgb_front/image',  # 'carla/ego_vehicle/rgb_front/image'
+                'depth_image_topic': 'depth_front/image',  # 'carla/ego_vehicle/depth_front/image'
+                'color_pointcloud': 'True',
+                'use_image_proc': 'False',
+                'use_rtabmap': 'True',
+                'use_gpu': 'False',
+                'detect_ground_and_obstacles': 'False',
+                'register_depth': 'True',
+                'rtabmap_depth_decimation': '1',  # 1 means no decimation, 2
+                'rtabmap_voxel_size': '0.0',  # 0.0 means no filtering, 0.1
+                'qos': '2',
+                # 'use_system_default_qos': 'True' if qos_str == 'SYSTEM_DEFAULT' else 'False',
+                'use_system_default_qos': 'True',
+                'attach_to_shared_component_container': 'False',
+                'component_container_name': 'carla_stereo_proc',
+            }.items()
+    )
+
     ld = launch_args + [
         carla_launch,
         carla_ros_bridge,
@@ -1019,7 +1120,8 @@ def launch_setup(context, *args, **kwargs):
         joy_teleop_node,
         ackermann_mux_node,
         waypoint_recording_node,
-        custom_controller_group
+        custom_controller_group,
+        # stereo_and_depth_image_processing_node
     ]
     return ld
 

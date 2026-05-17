@@ -240,8 +240,8 @@ RUN sudo apt update && DEBIAN_FRONTEND="noninteractive" sudo apt-get install -y 
 #    ros-$ROS_DISTRO-pcl-conversions \
 #    ros-$ROS_DISTRO-cv-bridge \
 #    ros-$ROS_DISTRO-vision-opencv \
-    ros-$ROS_DISTRO-rqt-image-view \
-    ros-$ROS_DISTRO-rqt-gui-py
+    ros-${ROS_DISTRO}-rqt-image-view \
+    ros-${ROS_DISTRO}-rqt-gui-py
 
 # simple-id==1.0.1
 #RUN python3 -m pip install "numpy==1.23.5"

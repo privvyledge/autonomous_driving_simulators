@@ -78,12 +78,54 @@
                     "noise_stddev": 0.0
                 },
                 {
+                    "type": "sensor.lidar.ray_cast_semantic",
+                    "id": "semantic_lidar",
+                    "spawn_point": {"x": 0.0, "y": 0.0, "z": 2.4, "roll": 0.0, "pitch": 0.0, "yaw": 0.0},
+                    "range": 50,
+                    "channels": 32,
+                    "points_per_second": 320000,
+                    "upper_fov": 2.0,
+                    "lower_fov": -26.8,
+                    "rotation_frequency": 20
+                },
+                {
+                    "type": "sensor.other.radar",
+                    "id": "radar_front",
+                    "spawn_point": {"x": 2.0, "y": 0.0, "z": 2.0, "roll": 0.0, "pitch": 0.0, "yaw": 0.0},
+                    "horizontal_fov": 30.0,
+                    "vertical_fov": 10.0,
+                    "points_per_second": 1500,
+                    "range": 100.0
+                },
+                {
+                    "type": "sensor.camera.semantic_segmentation",
+                    "id": "semantic_segmentation_front",
+                    "spawn_point": {"x": 2.0, "y": 0.0, "z": 2.0, "roll": 0.0, "pitch": 0.0, "yaw": 0.0},
+                    "fov": 90.0,
+                    "image_size_x": 800,
+                    "image_size_y": 600
+                },
+                {
                     "type": "sensor.camera.depth",
                     "id": "depth_front",
                     "spawn_point": {"x": 2.0, "y": 0.0, "z": 2.0, "roll": 0.0, "pitch": 0.0, "yaw": 0.0},
                     "fov": 90.0,
                     "image_size_x": 800,
                     "image_size_y": 600
+                },
+                {
+                    "type": "sensor.camera.dvs",
+                    "id": "dvs_front",
+                    "spawn_point": {"x": 2.0, "y": 0.0, "z": 2.0, "roll": 0.0, "pitch": 0.0, "yaw": 0.0},
+                    "fov": 90.0,
+                    "image_size_x": 800,
+                    "image_size_y": 600,
+                    "positive_threshold": 0.3,
+                    "negative_threshold": 0.3,
+                    "sigma_positive_threshold": 0.0,
+                    "sigma_negative_threshold": 0.0,
+                    "use_log": true,
+                    "log_eps": 0.001
                 },
                 {
                     "type": "sensor.other.gnss",
@@ -139,6 +181,21 @@
             "sensors":
             [
                 {
+                    "type": "sensor.camera.rgb",
+                    "id": "rgb_view",
+                    "spawn_point": {"x": -4.5, "y": 0.0, "z": 2.8, "roll": 0.0, "pitch": 20.0, "yaw": 0.0},
+                    "image_size_x": 800,
+                    "image_size_y": 600,
+                    "fov": 90.0,
+                    "attached_objects":
+                    [
+                        {
+                            "type": "actor.pseudo.control",
+                            "id": "control"
+                        }
+                    ]
+                },
+                {
                     "type": "sensor.pseudo.tf",
                     "id": "tf"
                 },
@@ -166,6 +223,21 @@
             "spawn_point": {"x": -2.1, "y": -321.2, "z": 2.0, "roll": 0.0, "pitch": 0.0, "yaw": 0.0},
             "sensors":
             [
+                {
+                    "type": "sensor.camera.rgb",
+                    "id": "rgb_view",
+                    "spawn_point": {"x": -4.5, "y": 0.0, "z": 2.8, "roll": 0.0, "pitch": 20.0, "yaw": 0.0},
+                    "image_size_x": 800,
+                    "image_size_y": 600,
+                    "fov": 90.0,
+                    "attached_objects":
+                    [
+                        {
+                            "type": "actor.pseudo.control",
+                            "id": "control"
+                        }
+                    ]
+                },
                 {
                     "type": "sensor.pseudo.tf",
                     "id": "tf"
@@ -195,6 +267,21 @@
             "sensors":
             [
                 {
+                    "type": "sensor.camera.rgb",
+                    "id": "rgb_view",
+                    "spawn_point": {"x": -4.5, "y": 0.0, "z": 2.8, "roll": 0.0, "pitch": 20.0, "yaw": 0.0},
+                    "image_size_x": 800,
+                    "image_size_y": 600,
+                    "fov": 90.0,
+                    "attached_objects":
+                    [
+                        {
+                            "type": "actor.pseudo.control",
+                            "id": "control"
+                        }
+                    ]
+                },
+                {
                     "type": "sensor.pseudo.tf",
                     "id": "tf"
                 },
@@ -222,6 +309,21 @@
             "spawn_point": {"x": -1.2, "y": -184.0, "z": 2.0, "roll": 0.0, "pitch": 0.0, "yaw": -89.43235779},
             "sensors":
             [
+                {
+                    "type": "sensor.camera.rgb",
+                    "id": "rgb_view",
+                    "spawn_point": {"x": -4.5, "y": 0.0, "z": 2.8, "roll": 0.0, "pitch": 20.0, "yaw": 0.0},
+                    "image_size_x": 800,
+                    "image_size_y": 600,
+                    "fov": 90.0,
+                    "attached_objects":
+                    [
+                        {
+                            "type": "actor.pseudo.control",
+                            "id": "control"
+                        }
+                    ]
+                },
                 {
                     "type": "sensor.pseudo.tf",
                     "id": "tf"
@@ -251,6 +353,21 @@
             "sensors":
             [
                 {
+                    "type": "sensor.camera.rgb",
+                    "id": "rgb_view",
+                    "spawn_point": {"x": -4.5, "y": 0.0, "z": 2.8, "roll": 0.0, "pitch": 20.0, "yaw": 0.0},
+                    "image_size_x": 800,
+                    "image_size_y": 600,
+                    "fov": 90.0,
+                    "attached_objects":
+                    [
+                        {
+                            "type": "actor.pseudo.control",
+                            "id": "control"
+                        }
+                    ]
+                },
+                {
                     "type": "sensor.pseudo.tf",
                     "id": "tf"
                 },
@@ -278,6 +395,21 @@
             "spawn_point": {"x": -1.2, "y": -250.0, "z": 2.0, "roll": 0.0, "pitch": 0.0, "yaw": -89.43235779},
             "sensors":
             [
+                {
+                    "type": "sensor.camera.rgb",
+                    "id": "rgb_view",
+                    "spawn_point": {"x": -4.5, "y": 0.0, "z": 2.8, "roll": 0.0, "pitch": 20.0, "yaw": 0.0},
+                    "image_size_x": 800,
+                    "image_size_y": 600,
+                    "fov": 90.0,
+                    "attached_objects":
+                    [
+                        {
+                            "type": "actor.pseudo.control",
+                            "id": "control"
+                        }
+                    ]
+                },
                 {
                     "type": "sensor.pseudo.tf",
                     "id": "tf"
