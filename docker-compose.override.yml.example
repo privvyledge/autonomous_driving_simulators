@@ -1,0 +1,44 @@
+# docker-compose.override.yml.example
+#
+# Copy this file to docker-compose.override.yml and customise for your machine.
+# docker-compose.override.yml is gitignored — local changes will not be committed.
+#
+# docker compose automatically merges this file when present.
+# See: https://docs.docker.com/compose/multiple-compose-files/merge/
+
+services:
+
+  # ── CARLA Server ────────────────────────────────────────────────────────
+  carla-server:
+    # Use a physical display instead of offscreen rendering
+    environment:
+      SDL_VIDEODRIVER: x11
+      DISPLAY: "${DISPLAY:-:0}"
+    # Higher quality rendering (comment out -RenderOffScreen too)
+    command: >
+      /bin/bash ./CarlaUE4.sh
+      -prefernvidia -nosound
+      -benchmark -fps=20
+      -quality-level=Epic
+
+  # ── CARLA ROS Bridge ────────────────────────────────────────────────────
+  carla-ros-bridge:
+    environment:
+      CARLA_TOWN: Town03        # override map
+      CARLA_FPS: "20"
+    volumes:
+      - ./config:/config:rw    # rw for in-container edits during development
+      - ./launch:/launch:rw
+      - ./data/waypoints:/waypoints:rw
+
+  # ── Autoware ────────────────────────────────────────────────────────────
+  autoware:
+    environment:
+      VEHICLE_ID: my_vehicle
+    volumes:
+      - /path/to/my/hd_maps:/maps:ro   # replace with your map directory
+
+  # ── Traffic Generator ───────────────────────────────────────────────────
+  # Uncomment to make traffic start automatically (removes the --profile gate)
+  # traffic-generator:
+  #   profiles: []

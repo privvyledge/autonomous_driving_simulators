@@ -8,6 +8,12 @@ Launch the following nodes:
 -->
 
 <launch>
-
-
+  <!-- TODO: Implement simplified perception stack.
+       Required nodes per header comment:
+         1. TensorRT detector      (autoware_tensorrt_yolox)
+         2. Ground segmentation    (see ground_segmentation.launch.py)
+         3. Euclidean clustering   (tier4_perception_launch)
+         4. Occupancy grid map     (probabilistic_occupancy_grid_map)
+       This file is currently a non-functional placeholder.
+  -->
 </launch>

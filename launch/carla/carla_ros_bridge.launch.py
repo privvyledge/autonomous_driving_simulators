@@ -89,6 +89,11 @@ def generate_launch_description():
             default_value=get_package_share_directory(
                 'carla_autoware_bridge') + '/data/carla_tesla_model3/steer_map.csv'
         ),
+        launch.actions.DeclareLaunchArgument(
+            name='use_sim_time',
+            default_value='True',
+            description='Use simulated clock from the CARLA server'
+        ),
         launch_ros.actions.Node(
             package='carla_ros_bridge',
             executable='bridge',
@@ -98,7 +103,7 @@ def generate_launch_description():
             on_exit=launch.actions.Shutdown(),
             parameters=[
                 {
-                    'use_sim_time': True
+                    'use_sim_time': launch.substitutions.LaunchConfiguration('use_sim_time')
                 },
                 {
                     'host': launch.substitutions.LaunchConfiguration('host')
@@ -153,7 +158,7 @@ def generate_launch_description():
             on_exit=launch.actions.Shutdown(),
             parameters=[
                 {
-                    'use_sim_time': True
+                    'use_sim_time': launch.substitutions.LaunchConfiguration('use_sim_time')
                 },
                 {
                     'csv_path_steer_map': launch.substitutions.LaunchConfiguration(

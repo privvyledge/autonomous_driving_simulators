@@ -47,17 +47,6 @@ from ament_index_python.packages import get_package_share_directory, get_package
 from nav2_common.launch import RewrittenYaml, ReplaceString
 
 
-def carla_shutdown_callback(_launch_context):
-    shutdown_process = ExecuteProcess(
-            cmd=[[
-                "kill -2 $(pgrep -f CarlaUE4)"
-            ]],
-            output="both",
-            shell=True
-    )
-    return [shutdown_process]
-
-
 def launch_setup(context, *args, **kwargs):
     # Get package directories
 
@@ -97,7 +86,7 @@ def launch_setup(context, *args, **kwargs):
             get_package_share_directory('autonomous_driving_simulators'), 'data', 'waypoints.csv')
 
     # mpc_model_path = os.path.join(get_package_share_directory('autonomous_driving_simulators'), 'data', 'mpc')
-    mpc_model_path = Path.home() / 'shared_dir' /'mpc'/ 'carla'
+    mpc_model_path = os.environ.get('MPC_MODEL_PATH', str(Path.home() / 'shared_dir' / 'mpc' / 'carla'))
 
     # Setup launch configuration variables
     ''' Unreal Engine Carla parameters '''
@@ -996,7 +985,7 @@ def launch_setup(context, *args, **kwargs):
                 # 'distance_tolerance': '2.5',  # do_mpc: 2.5-5.0
                 # 'speed_tolerance': '5.0',
                 'load_waypoints': 'False',  # set as not "start_global_planner"
-                'waypoints_csv': '/home/carla/shared_dir/waypoints/carla/waypoints.csv',  # todo: make an argument
+                'waypoints_csv': waypoints_csv_file,
                 # 'mpc_toolbox': 'acados',  # do_mpc, acados, casadi. todo: set as launch arg
                 'ode_type': 'continuous_kinematic_coupled',
                 'desired_speed': target_speed,
