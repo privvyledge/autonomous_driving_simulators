@@ -17,26 +17,26 @@ A ROS2 Humble research platform that bridges **CARLA** and **AWSIM** simulators 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │  Host (Ubuntu 22.04, RTX 3070, Docker network_mode: host)               │
-│                                                                          │
+│                                                                         │
 │  ┌───────────────────┐      ┌──────────────────────┐                    │
 │  │   carla-server    │      │  traffic-generator   │  (--profile)       │
 │  │  CARLA UE4 binary │      │  Python + CARLA lib  │                    │
 │  │  :2000/:2001/2002 │      │  generate_traffic.py │                    │
 │  └────────┬──────────┘      └──────────────────────┘                    │
-│           │ Python API (port 2000)                                       │
+│           │ Python API (port 2000)                                      │
 │  ┌────────▼──────────────────────────────────────────┐                  │
-│  │          carla-ros-bridge                          │                  │
-│  │  carla_ros_bridge  +  carla_autoware_bridge        │                  │
-│  │  carla_spawn_objects / carla_waypoint_publisher    │                  │
-│  │  Topic remapping: CARLA raw → Autoware sensing/*   │                  │
+│  │          carla-ros-bridge                          │                 │
+│  │  carla_ros_bridge  +  carla_autoware_bridge        │                 │
+│  │  carla_spawn_objects / carla_waypoint_publisher    │                 │
+│  │  Topic remapping: CARLA raw → Autoware sensing/*   │                 │
 │  └────────┬──────────────────────────────────────────┘                  │
 │           │ ROS2 DDS (CycloneDDS, ROS_DOMAIN_ID)                        │
 │  ┌────────▼──────────────────────────────────────────┐                  │
-│  │                   autoware                         │                  │
-│  │  Perception: ground seg → clustering → tracking    │                  │
-│  │  Planning:   global planner + waypoint follower    │                  │
-│  │  Control:    MPC / Pure Pursuit / PID cascade      │                  │
-│  │  SLAM:       RTABMap (ICP + RGBD odometry)         │                  │
+│  │                   autoware                         │                 │
+│  │  Perception: ground seg → clustering → tracking    │                 │
+│  │  Planning:   global planner + waypoint follower    │                 │
+│  │  Control:    MPC / Pure Pursuit / PID cascade      │                 │
+│  │  SLAM:       RTABMap (ICP + RGBD odometry)         │                 │
 │  └────────────────────────────────────────────────────┘                 │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -44,10 +44,10 @@ A ROS2 Humble research platform that bridges **CARLA** and **AWSIM** simulators 
 ### AWSIM topology
 
 ```
-┌──────────────────────┐     ROS2 DDS     ┌──────────────────────────┐
+┌──────────────────────┐     ROS2 DDS      ┌──────────────────────────┐
 │        awsim         │ ────────────────► │         autoware         │
-│  Unity-based sim     │                  │  (same image as above)   │
-│  native Autoware     │                  └──────────────────────────┘
+│  Unity-based sim     │                   │  (same image as above)   │
+│  native Autoware     │                   └──────────────────────────┘
 │  topic output        │
 └──────────────────────┘
 ```
@@ -101,7 +101,7 @@ docker run --rm --runtime=nvidia nvidia/cuda:12.3.2-base-ubuntu22.04 nvidia-smi
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/YOUR_ORG/autonomous_driving_simulators.git
+git clone https://github.com/privvyledge/autonomous_driving_simulators.git
 cd autonomous_driving_simulators
 
 # 2. Configure environment
