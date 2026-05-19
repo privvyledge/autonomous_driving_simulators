@@ -38,6 +38,7 @@ services:
       NVIDIA_DRIVER_CAPABILITIES: all
       DISPLAY: "${DISPLAY:-:0}"
       SDL_VIDEODRIVER: "${SDL_VIDEODRIVER:-offscreen}"
+      CARLA_HEADLESS: "${CARLA_HEADLESS:-true}"
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
     ports:
@@ -53,18 +54,16 @@ services:
               capabilities: [gpu, compute, video, display, utility]
     command: >
       /bin/bash -c "
-        DISP=$${DISPLAY:-:0};
-        SOCK=/tmp/.X11-unix/X$${DISP#:};
-        if [ -S \"$$SOCK\" ]; then
-          exec /bin/bash ./CarlaUE4.sh
-            -prefernvidia -nosound
-            -benchmark -fps=${CARLA_FPS:-20}
-            -quality-level=${CARLA_QUALITY:-Low};
-        else
+        if [ \"$${CARLA_HEADLESS:-true}\" = \"true\" ]; then
           exec xvfb-run -a /bin/bash ./CarlaUE4.sh
             -prefernvidia -nosound
             -benchmark -fps=${CARLA_FPS:-20}
             -RenderOffScreen
+            -quality-level=${CARLA_QUALITY:-Low};
+        else
+          exec /bin/bash ./CarlaUE4.sh
+            -prefernvidia -nosound
+            -benchmark -fps=${CARLA_FPS:-20}
             -quality-level=${CARLA_QUALITY:-Low};
         fi
       "

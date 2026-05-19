@@ -32,6 +32,14 @@ RUN apt-get update && apt-get install -yq --no-install-recommends \
     && dpkg-reconfigure -f noninteractive tzdata \
     && rm -rf /var/lib/apt/lists/*
 
+# The nvidia-cuda base image does not ship the Vulkan ICD JSON that tells the
+# loader where to find the NVIDIA Vulkan driver.  The actual libGLX_nvidia.so.0
+# is injected at runtime by the NVIDIA Container Toolkit (NVIDIA_DRIVER_CAPABILITIES=all);
+# we only need the pointer file.
+RUN mkdir -p /usr/share/vulkan/icd.d \
+    && printf '{"file_format_version":"1.0.0","ICD":{"library_path":"libGLX_nvidia.so.0","api_version":"1.3.0"}}\n' \
+       > /usr/share/vulkan/icd.d/nvidia_icd.json
+
 RUN useradd --create-home --shell /bin/bash -g root -G sudo,video "${USERNAME}" \
     --uid "${USER_UID}" \
     && echo "${USERNAME}:${USERNAME}" | chpasswd \
