@@ -55,7 +55,7 @@ services:
     command: >
       /bin/bash -c "
         if [ \"$${CARLA_HEADLESS:-true}\" = \"true\" ]; then
-          exec xvfb-run -a /bin/bash ./CarlaUE4.sh
+          exec /bin/bash ./CarlaUE4.sh
             -prefernvidia -nosound
             -benchmark -fps=${CARLA_FPS:-20}
             -RenderOffScreen

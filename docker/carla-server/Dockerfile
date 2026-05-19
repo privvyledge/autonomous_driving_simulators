@@ -24,9 +24,7 @@ RUN apt-get update && apt-get install -yq --no-install-recommends \
     libvulkan1 libomp5 \
     xdg-user-dirs xdg-utils \
     alsa-utils \
-    xvfb \
     python${PYTHON_VERSION} python3-pip \
-    x11-apps \
     && ln -fns /usr/share/zoneinfo/${TZ} /etc/localtime \
     && echo "${TZ}" > /etc/timezone \
     && dpkg-reconfigure -f noninteractive tzdata \
@@ -66,6 +64,7 @@ RUN cd /home/${USERNAME}/carla_simulator \
     && /bin/bash ./ImportAssets.sh 2>/dev/null || true
 
 ENV CARLA_ROOT=/home/${USERNAME}/carla_simulator
+ENV SDL_VIDEODRIVER=offscreen
 
 WORKDIR ${CARLA_ROOT}
 
