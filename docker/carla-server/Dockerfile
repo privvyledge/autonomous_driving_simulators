@@ -24,6 +24,7 @@ RUN apt-get update && apt-get install -yq --no-install-recommends \
     libvulkan1 libomp5 \
     xdg-user-dirs xdg-utils \
     alsa-utils \
+    xvfb \
     python${PYTHON_VERSION} python3-pip \
     x11-apps \
     && ln -fns /usr/share/zoneinfo/${TZ} /etc/localtime \

@@ -21,6 +21,18 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ENV TZ=America/New_York
 ARG DEBIAN_FRONTEND=noninteractive
 
+# ROS 2 apt signing key expired in 2025; remove the old source entry first to avoid
+# a Signed-By conflict between the base image's keyring-file reference and the new
+# inline-key format installed by ros2-apt-source.deb.
+RUN rm -f /etc/apt/sources.list.d/ros2*.list \
+          /etc/apt/sources.list.d/ros2*.sources \
+    && ROS_APT_SOURCE_VERSION=$(curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest \
+        | grep -F "tag_name" | awk -F'"' '{print $4}') \
+    && curl -L -o /tmp/ros2-apt-source.deb \
+       "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.$(. /etc/os-release && echo ${UBUNTU_CODENAME:-${VERSION_CODENAME}})_all.deb" \
+    && dpkg -i /tmp/ros2-apt-source.deb \
+    && rm /tmp/ros2-apt-source.deb
+
 RUN apt-get update && apt-get install -yq --no-install-recommends \
     sudo tzdata wget unzip git curl \
     && ln -fns /usr/share/zoneinfo/${TZ} /etc/localtime \
@@ -38,12 +50,9 @@ USER ${USERNAME}
 WORKDIR /home/${USERNAME}
 
 # CARLA Python client wheel for Python 3.10 on Ubuntu 22.04
-RUN mkdir -p Downloads \
-    && wget -q \
-       "https://github.com/gezp/carla_ros/releases/download/carla-${CARLA_VERSION}-ubuntu-${UBUNTU_VERSION}.04/carla-${CARLA_VERSION}-cp${PYTHON_MAJOR}${PYTHON_MINOR}-cp${PYTHON_MAJOR}${PYTHON_MINOR}-linux_x86_64.whl" \
-       -O Downloads/carla.whl \
-    && python3 -m pip install --no-cache-dir Downloads/carla.whl \
-    && rm Downloads/carla.whl
+# Install directly from URL so pip sees the proper wheel filename (required for validation).
+RUN python3 -m pip install --no-cache-dir \
+    "https://github.com/gezp/carla_ros/releases/download/carla-${CARLA_VERSION}-ubuntu-${UBUNTU_VERSION}.04/carla-${CARLA_VERSION}-cp${PYTHON_MAJOR}${PYTHON_MINOR}-cp${PYTHON_MAJOR}${PYTHON_MINOR}-linux_x86_64.whl"
 
 # Python bridge runtime deps
 RUN python3 -m pip install --no-cache-dir \

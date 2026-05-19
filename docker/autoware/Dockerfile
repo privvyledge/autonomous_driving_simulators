@@ -13,6 +13,18 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ENV TZ=America/New_York
 ARG DEBIAN_FRONTEND=noninteractive
 
+# ROS 2 apt signing key expired in 2025; remove the old source entry first to avoid
+# a Signed-By conflict between the base image's keyring-file reference and the new
+# inline-key format installed by ros2-apt-source.deb.
+RUN rm -f /etc/apt/sources.list.d/ros2*.list \
+          /etc/apt/sources.list.d/ros2*.sources \
+    && ROS_APT_SOURCE_VERSION=$(curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest \
+        | grep -F "tag_name" | awk -F'"' '{print $4}') \
+    && curl -L -o /tmp/ros2-apt-source.deb \
+       "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.$(. /etc/os-release && echo ${UBUNTU_CODENAME:-${VERSION_CODENAME}})_all.deb" \
+    && dpkg -i /tmp/ros2-apt-source.deb \
+    && rm /tmp/ros2-apt-source.deb
+
 RUN apt-get update && apt-get install -yq --no-install-recommends \
     sudo tzdata wget git curl unzip libvulkan1 \
     && ln -fns /usr/share/zoneinfo/${TZ} /etc/localtime \
@@ -63,12 +75,14 @@ RUN mkdir -p /home/${USERNAME}/sdks \
         -e "${ACADOS_ROOT}/interfaces/acados_template"
 
 # tera_renderer — code generation backend for Acados Python interface
-RUN sudo apt-get update \
-    && sudo apt-get install -y --no-install-recommends rustc cargo \
-    && sudo rm -rf /var/lib/apt/lists/* \
+# apt rustc in Ubuntu 22.04 is 1.75 which lacks edition2024 (needs 1.85+); use rustup instead.
+# mkdir -p is required because cmake install does not create the bin/ directory.
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
+    && mkdir -p "${ACADOS_ROOT}/bin" \
     && cd "${ACADOS_ROOT}/bin" \
     && git clone https://github.com/acados/tera_renderer.git \
     && cd tera_renderer \
+    && . "$HOME/.cargo/env" \
     && cargo build --verbose --release \
     && cp target/release/t_renderer "${ACADOS_ROOT}/bin"
 

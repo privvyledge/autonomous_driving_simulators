@@ -52,18 +52,29 @@ services:
               count: 1
               capabilities: [gpu, compute, video, display, utility]
     command: >
-      /bin/bash ./CarlaUE4.sh
-      -prefernvidia -nosound
-      -benchmark -fps=${CARLA_FPS:-20}
-      -RenderOffScreen
-      -quality-level=${CARLA_QUALITY:-Low}
+      /bin/bash -c "
+        DISP=$${DISPLAY:-:0};
+        SOCK=/tmp/.X11-unix/X$${DISP#:};
+        if [ -S \"$$SOCK\" ]; then
+          exec /bin/bash ./CarlaUE4.sh
+            -prefernvidia -nosound
+            -benchmark -fps=${CARLA_FPS:-20}
+            -quality-level=${CARLA_QUALITY:-Low};
+        else
+          exec xvfb-run -a /bin/bash ./CarlaUE4.sh
+            -prefernvidia -nosound
+            -benchmark -fps=${CARLA_FPS:-20}
+            -RenderOffScreen
+            -quality-level=${CARLA_QUALITY:-Low};
+        fi
+      "
     healthcheck:
       test: ["CMD", "python3", "-c",
              "import carla; c=carla.Client('localhost',2000); c.set_timeout(5.0); c.get_server_version()"]
-      interval: 15s
+      interval: 20s
       timeout: 10s
-      retries: 6
-      start_period: 45s
+      retries: 10
+      start_period: 120s
 
   # ── CARLA ROS2 Bridge ────────────────────────────────────────────────────
   carla-ros-bridge:
