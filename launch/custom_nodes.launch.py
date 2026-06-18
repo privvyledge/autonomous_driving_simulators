@@ -3,7 +3,7 @@ from pathlib import Path
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, GroupAction, IncludeLaunchDescription, OpaqueFunction
-from launch.conditions import IfCondition
+from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import LaunchConfiguration
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
@@ -25,6 +25,8 @@ def launch_setup(context, *args, **kwargs):
     target_speed = LaunchConfiguration('target_speed')
     teleoperate = LaunchConfiguration('teleoperate')
     publish_twist = LaunchConfiguration('publish_twist')
+    control_loop_rate = LaunchConfiguration('control_loop_rate')
+    input_msg_is_stamped = LaunchConfiguration('input_msg_is_stamped')
 
     # Get configuration file paths
     pkg_share = get_package_share_directory('autonomous_driving_simulators')
@@ -230,11 +232,56 @@ def launch_setup(context, *args, **kwargs):
         actions=[custom_mpc_node, custom_purepursuit_node]
     )
 
+    carla_ackermann_cmd_topic = '/drive'
+    if teleoperate.perform(context).lower() == 'true':
+        carla_ackermann_cmd_topic = f'/ackermann_cmd_{role_name_string}'
+        
+    carla_ackermann_control_node = Node(
+        package='carla_ackermann_control',
+        executable='carla_ackermann_control_node',
+        name=f'carla_ackermann_control_{role_name_string}',
+        output='screen',
+        condition=UnlessCondition(publish_twist),
+        parameters=[
+            os.path.join(pkg_share, "config", "PID_low_level.yaml"),
+            {
+                'use_sim_time': use_sim_time,
+                'role_name': role_name,
+                'control_loop_rate': control_loop_rate,
+                'input_msg_is_stamped': input_msg_is_stamped
+            }
+        ],
+        remappings=[
+            (f'/carla/{role_name_string}/ackermann_cmd', carla_ackermann_cmd_topic)
+        ]
+    )
+
+    carla_twist_to_control_node = Node(
+        package='carla_twist_to_control',
+        executable='carla_twist_to_control',
+        name=f"carla_twist_to_control_{role_name_string}",
+        output='screen',
+        emulate_tty=True,
+        condition=IfCondition(publish_twist),
+        parameters=[
+            {
+                'use_sim_time': use_sim_time,
+                'role_name': role_name,
+                'input_msg_is_stamped': input_msg_is_stamped
+            }
+        ],
+        remappings=[
+            (f'/carla/{role_name_string}/twist', '/twist')
+        ]
+    )
+
     return [
         waypoint_loader_node,
         waypoint_recording_node,
         teleop_group,
-        custom_controller_group
+        custom_controller_group,
+        carla_ackermann_control_node,
+        carla_twist_to_control_node
     ]
 
 def generate_launch_description():
@@ -258,6 +305,8 @@ def generate_launch_description():
         DeclareLaunchArgument('target_speed', default_value='10.0', description='Target speed in m/s'),
         DeclareLaunchArgument('teleoperate', default_value='False', description='Enable joystick teleoperation and Ackermann command multiplexer'),
         DeclareLaunchArgument('publish_twist', default_value='False', description='Publish Twist messages instead of Ackermann drive commands'),
+        DeclareLaunchArgument('control_loop_rate', default_value='0.05', description='Control loop rate in seconds'),
+        DeclareLaunchArgument('input_msg_is_stamped', default_value='True', description='Whether input speed/control messages are stamped'),
         
         OpaqueFunction(function=launch_setup)
     ])

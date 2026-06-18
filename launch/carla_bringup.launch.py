@@ -130,8 +130,11 @@ def launch_setup(context, *args, **kwargs):
     goal_pose = LaunchConfiguration('goal_pose', default='127.4,195.4,0.0,180.0,0,0')
     start_global_planner_carla = LaunchConfiguration('start_global_planner_carla',
                                                      default='True')
-    publish_waypoints_from_csv = LaunchConfiguration('publish_waypoints_from_csv', default='False')
     launch_custom_controller = LaunchConfiguration('launch_custom_controller', default='False')
+    launch_builtin_agent = LaunchConfiguration('launch_builtin_agent',
+                                               default=PythonExpression(["'True' if '", launch_custom_controller, "' != 'True' else 'False'"]))
+    launch_autoware_bridge = LaunchConfiguration('launch_autoware_bridge', default='False')
+    publish_waypoints_from_csv = LaunchConfiguration('publish_waypoints_from_csv', default='False')
     record_waypoints = LaunchConfiguration('record_waypoints', default='False')
     waypoints_csv_file = LaunchConfiguration('waypoints_csv_file', default=waypoints_csv_file_path)
 
@@ -302,7 +305,7 @@ def launch_setup(context, *args, **kwargs):
 
     spawn_point_la = DeclareLaunchArgument(
             name='spawn_point',
-            default_value='0.8798897862434387, -1.6753101348876953,4.0,-0.035736084,0.0263918489,-88.118721',
+            default_value='0.8798897862434387,-1.6753101348876953,4.0,-0.035736084,0.0263918489,-88.118721',
             description='Where to spawn the car. Make sure Z is higher than 0 else the spawning'
                         ' will fail due to collision with the ground. Set to "None" for a random spawn point. '
                         'Default: 127.4,-195.4,2,0,0,180')
@@ -344,6 +347,18 @@ def launch_setup(context, *args, **kwargs):
             name='start_global_planner_carla',
             default_value=start_global_planner_carla,
             description='Whether to launch Carlas global path planner and publish waypoints to the desired goal.'
+    )
+
+    launch_builtin_agent_la = DeclareLaunchArgument(
+            name='launch_builtin_agent',
+            default_value=launch_builtin_agent,
+            description='Whether to launch the built-in CARLA AD agent.'
+    )
+
+    launch_autoware_bridge_la = DeclareLaunchArgument(
+            name='launch_autoware_bridge',
+            default_value=launch_autoware_bridge,
+            description='Whether to launch the Autoware bridge.'
     )
 
     control_loop_rate_la = DeclareLaunchArgument(
@@ -463,6 +478,8 @@ def launch_setup(context, *args, **kwargs):
         publish_fixed_goal_pose_la,
         goal_pose_la,
         start_global_planner_carla_la,
+        launch_builtin_agent_la,
+        launch_autoware_bridge_la,
         control_loop_rate_la,
         input_msg_is_stamped_la,
         teleoperate_la,
@@ -498,32 +515,9 @@ def launch_setup(context, *args, **kwargs):
     teleoperate_string = teleoperate.perform(context)
     remap_to_autoware_string = remap_to_autoware.perform(context)
 
-    # Optionally remap raw CARLA sensor topics to Autoware sensing topics.
-    if remap_to_autoware_string.lower() == 'true':
-        carla_ros_bridge_remappings = [
-            (f'/carla/{role_name_string}/rgb_front/camera_info', '/sensing/camera/traffic_light/camera_info'),
-            (f'/carla/{role_name_string}/rgb_front/image', '/sensing/camera/traffic_light/image_raw'),
-            (f'/carla/{role_name_string}/gnss', '/sensing/gnss/ublox/nav_sat_fix'),
-            (f'/carla/{role_name_string}/imu', '/sensing/imu/tamagawa/imu_raw'),
-            (f'/carla/{role_name_string}/lidar', '/sensing/lidar/top/pointcloud_raw'),
-        ]
-    else:
-        carla_ros_bridge_remappings = []
-
-    goal_pose_list = goal_pose_string.split(sep=',')
-    goal_pose_orientation_quat = Rotation.from_euler('zyx', goal_pose_list[3:], degrees=True).as_quat().tolist()
-
-    spawn_point_param_name = 'spawn_point_' + role_name_string
-    topic_name = "/carla/" + role_name_string + "/target_speed"
-    data_string = "{'data': " + target_speed_string + "}"
-    if goal_pose_string.lower() is not None:
-        goal_pose_string = (("{'header': {'stamp': 'now', 'frame_id': 'map'}, "
-                             "'pose': {position: {x: ") + str(goal_pose_list[0]) + ", y: " + str(goal_pose_list[1]) +
-                            ", z: " + str(goal_pose_list[2]) + "}, orientation: {x: " + str(
-                        goal_pose_orientation_quat[0]) +
-                            ", y: " + str(goal_pose_orientation_quat[1]) + ", z: " + str(
-                        goal_pose_orientation_quat[2]) +
-                            ", w: " + str(goal_pose_orientation_quat[3]) + "}}}")
+    goal_pose_resolved = PythonExpression([
+        "'none' if '", publish_fixed_goal_pose, "' != 'True' else '", goal_pose, "'"
+    ])
     # else:
     #     goal_pose_string = ("{'header': {'stamp': 'now', 'frame_id': 'map'}, "
     #                         "'pose': {position: {x: 0.0, y: 0.0, z: 0.0}, "
@@ -654,123 +648,40 @@ def launch_setup(context, *args, **kwargs):
             emulate_tty=True
     )
 
-    carla_ros_bridge = Node(
-            package='carla_ros_bridge',
-            executable='bridge',
-            name='carla_ros_bridge',
-            output='log',
-            emulate_tty='True',
-            condition=IfCondition(launch_ros_bridge),
-            on_exit=launch.actions.Shutdown(),
-            parameters=[
-                {
-                    'use_sim_time': use_sim_time,
-                    'host': host,
-                    'port': port,
-                    'timeout': timeout,
-                    'passive': passive,
-                    'synchronous_mode': synchronous_mode,
-                    'synchronous_mode_wait_for_vehicle_control_command': synchronous_mode_wait_for_vehicle_control_command,
-                    'fixed_delta_seconds': fixed_delta_seconds,
-                    'town': town,
-                    'register_all_sensors': register_all_sensors,
-                    'ego_vehicle_role_name': ego_vehicle_role_name
-                }
-            ],
-            remappings=carla_ros_bridge_remappings
-            # Additional optional remaps (kept off by default):
-            #     (f'/carla/{role_name_string}/odometry', '/localization/kinematic_state'),
-            #     (f'/carla/{role_name_string}/tamagawa/imu_link', f'/carla/{role_name_string}/imu'),
-            #     (f'/carla/{role_name_string}/velodyne_top', f'/carla/{role_name_string}/lidar'),
-    )
-
-    # https://carla.readthedocs.io/projects/ros-bridge/en/latest/carla_spawn_objects/
-    # https://carla.readthedocs.io/en/latest/bp_library/#vehicle
-    # https://carla.readthedocs.io/en/latest/core_sensors/#types-of-sensors
-
-    carla_spawn_objects_launch = IncludeLaunchDescription(
+    simulation_bringup_launch = IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
-                    os.path.join(get_package_share_directory(
-                            'carla_spawn_objects'), 'carla_example_ego_vehicle.launch.py')
+                    os.path.join(
+                            get_package_share_directory('autonomous_driving_simulators'),
+                            'launch', 'carla', 'simulation_bringup.launch.py')
             ),
+            condition=IfCondition(launch_ros_bridge),
             launch_arguments={
+                'use_sim_time': use_sim_time,
+                'host': host,
+                'port': port,
+                'timeout': timeout,
+                'passive': passive,
+                'fixed_delta_seconds': fixed_delta_seconds,
+                'town': town,
+                'register_all_sensors': register_all_sensors,
+                'ego_vehicle_role_name': ego_vehicle_role_name,
+                'role_name': role_name,
+                'remap_to_autoware': remap_to_autoware,
                 'objects_definition_file': objects_definition_file,
-                spawn_point_param_name: spawn_point,
-                'spawn_point_ego_vehicle': spawn_point,
-                'role_name': role_name
+                'spawn_point': spawn_point,
+                'target_speed': target_speed,
+                'avoid_risk': avoid_risk,
+                'goal_pose': goal_pose_resolved,
+                'start_global_planner_carla': start_global_planner_carla,
+                'launch_builtin_agent': launch_builtin_agent,
+                'launch_autoware_bridge': launch_autoware_bridge,
+                'carla_waypoint_following_kp_lateral': carla_waypoint_following_kp_lateral,
+                'carla_waypoint_following_ki_lateral': carla_waypoint_following_ki_lateral,
+                'carla_waypoint_following_kd_lateral': carla_waypoint_following_kd_lateral,
+                'carla_waypoint_following_kp_longitudinal': carla_waypoint_following_kp_longitudinal,
+                'carla_waypoint_following_ki_longitudinal': carla_waypoint_following_ki_longitudinal,
+                'carla_waypoint_following_kd_longitudinal': carla_waypoint_following_kd_longitudinal,
             }.items()
-    )
-
-    carla_target_speed_publisher_node = ExecuteProcess(
-            output="log",
-            cmd=["ros2", "topic", "pub", topic_name,
-                 "std_msgs/msg/Float64", data_string, "--qos-durability", "transient_local"],
-            name='topic_pub_target_speed')
-
-    # carla_ad_agent_launch = IncludeLaunchDescription(
-    #         PythonLaunchDescriptionSource(
-    #                 os.path.join(get_package_share_directory(
-    #                         'carla_ad_agent'), 'carla_ad_agent.launch.py')
-    #         ),
-    #         launch_arguments={
-    #             'role_name': role_name,
-    #             'avoid_risk': avoid_risk
-    #         }.items()
-    # )
-
-    carla_ad_agent_launch = Node(
-            package='carla_ad_agent',
-            executable='ad_agent',
-            name=['carla_ad_agent_', role_name],
-            output='log',
-            parameters=[
-                {
-                    'role_name': role_name,
-                    'avoid_risk': avoid_risk
-                }
-            ]
-    )
-
-    goal_pose_publisher_node = TimerAction(
-            period=10.0,
-            actions=[
-                ExecuteProcess(
-                        output="log",
-                        condition=IfCondition(publish_fixed_goal_pose),
-                        cmd=[
-                            # "/goal_pose" or f"/carla/{role_name_string}/goal"
-                            "ros2", "topic", "pub", f"/carla/{role_name_string}/goal",
-                            "geometry_msgs/msg/PoseStamped", goal_pose_string, "--once",
-                        ],
-                        name='goal_pose_publisher')
-            ]
-    )
-
-    carla_goal_pose_relay_node = ExecuteProcess(
-            output="log",
-            cmd=["ros2", "run", "topic_tools", "relay", "/goal_pose", f"/carla/{role_name_string}/goal"],
-            # name='carla_goal_pose_relay'
-    )
-
-    carla_waypoint_publisher_node = Node(
-            package='carla_waypoint_publisher',
-            executable='carla_waypoint_publisher',
-            name='carla_waypoint_publisher',
-            condition=IfCondition(start_global_planner_carla),
-            output='screen',
-            emulate_tty='True',
-            parameters=[
-                {
-                    'use_sim_time': use_sim_time,
-                    'host': host,
-                    'port': port,
-                    'timeout': timeout,
-                    'role_name': role_name
-                }
-            ],
-            remappings=[
-                # (f'/carla/{role_name_string}/goal', '/goal_pose')
-            ]
     )
 
     waypoint_loader_node = Node(
@@ -911,29 +822,7 @@ def launch_setup(context, *args, **kwargs):
             ]
     )
 
-    # low level PID used to follow waypoints. Note that this is different from the low-level Cascaded PID of
-    # carla ackermann control even though they are doing the same thing.
-    # Therefore, when tuning the cascade from MPC to PID use the ackermann PID instead
-    carla_waypoint_following_node = Node(
-            package='carla_ad_agent',
-            executable='local_planner',
-            name=['carla_local_planner_', role_name],
-            output='screen',
-            condition=UnlessCondition(launch_custom_controller),
-            parameters=[
-                {
-                    'use_sim_time': True,
-                    'role_name': role_name,
-                    'Kp_lateral': carla_waypoint_following_kp_lateral,
-                    'Ki_lateral': carla_waypoint_following_ki_lateral,
-                    'Kd_lateral': carla_waypoint_following_kd_lateral,
-                    'Kp_longitudinal': carla_waypoint_following_kp_longitudinal,
-                    'Ki_longitudinal': carla_waypoint_following_ki_longitudinal,
-                    'Kd_longitudinal': carla_waypoint_following_kd_longitudinal,
-                    'control_time_step': control_loop_rate,
-                }
-            ]
-    )
+
 
     traj_track_settings = {
         'do_mpc': {
@@ -1120,15 +1009,8 @@ def launch_setup(context, *args, **kwargs):
 
     ld = launch_args + [
         carla_launch,
-        carla_ros_bridge,
-        carla_spawn_objects_launch,
-        carla_target_speed_publisher_node,
-        carla_ad_agent_launch,
-        goal_pose_publisher_node,
-        carla_goal_pose_relay_node,
-        carla_waypoint_publisher_node,
+        simulation_bringup_launch,
         waypoint_loader_node,
-        carla_waypoint_following_node,
         carla_manual_control,
         carla_ackermann_control_node,
         carla_twist_to_control_node,

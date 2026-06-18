@@ -62,6 +62,19 @@ RUN python3 -m pip install --no-cache-dir \
     simple-pid networkx pexpect \
     "scipy==1.12.0"
 
+# CARLA `agents` PythonAPI package (global route planner used by
+# carla_waypoint_publisher) — NOT bundled in the wheel. Sparse-checkout just that
+# directory at the matching tag and drop it beside the installed `carla` package.
+RUN git clone --depth 1 --filter=blob:none --sparse \
+        -b "${CARLA_VERSION}" https://github.com/carla-simulator/carla.git /tmp/carla_src \
+    && git -C /tmp/carla_src sparse-checkout set PythonAPI/carla/agents \
+    && SITE_PKGS="$(python3 -c 'import carla, os; print(os.path.dirname(os.path.dirname(os.path.realpath(carla.__file__))))')" \
+    && cp -r /tmp/carla_src/PythonAPI/carla/agents "${SITE_PKGS}/agents" \
+    && rm -rf /tmp/carla_src
+
+# Pin NumPy to the 1.x ABI — NumPy 2.x breaks cv_bridge (built against NumPy 1.x).
+RUN python3 -m pip install --no-cache-dir "numpy==1.26.4"
+
 # ROS bridge system deps
 RUN sudo apt-get update && sudo apt-get install -y --no-install-recommends \
     "ros-${ROS_DISTRO}-derived-object-msgs" \
@@ -69,6 +82,8 @@ RUN sudo apt-get update && sudo apt-get install -y --no-install-recommends \
     "ros-${ROS_DISTRO}-ackermann-msgs" \
     "ros-${ROS_DISTRO}-rqt-image-view" \
     "ros-${ROS_DISTRO}-rqt-gui-py" \
+    "ros-${ROS_DISTRO}-rmw-cyclonedds-cpp" \
+    "ros-${ROS_DISTRO}-topic-tools" \
     && sudo rm -rf /var/lib/apt/lists/*
 
 # Build CARLA ROS2 bridge workspace
@@ -83,6 +98,23 @@ RUN cd "${BUILD_HOME}/src/carla" \
     && git clone https://github.com/Robotics010/carla_tesla_model3_description.git \
     && git clone https://github.com/Robotics010/carla_launch.git \
     && git clone https://github.com/Robotics010/carla_control_launch.git
+
+# Align carla_ros_bridge's expected client version with the installed client.
+RUN find "${BUILD_HOME}/src" -name CARLA_VERSION -type f \
+        -exec sh -c 'printf "%s\n" "$1" > "$2"' _ "${CARLA_VERSION}" {} \;
+
+# Copy the local autonomous_driving_simulators package from the build context
+# instead of cloning it from GitHub, so local edits are baked into the image.
+ENV ADS_SRC="${BUILD_HOME}/src/autonomous_driving_simulators"
+COPY --chown=${USERNAME}:${USERNAME} package.xml setup.py setup.cfg requirements.txt "${ADS_SRC}/"
+COPY --chown=${USERNAME}:${USERNAME} resource "${ADS_SRC}/resource"
+COPY --chown=${USERNAME}:${USERNAME} config "${ADS_SRC}/config"
+COPY --chown=${USERNAME}:${USERNAME} launch "${ADS_SRC}/launch"
+COPY --chown=${USERNAME}:${USERNAME} data "${ADS_SRC}/data"
+COPY --chown=${USERNAME}:${USERNAME} scripts "${ADS_SRC}/scripts"
+COPY --chown=${USERNAME}:${USERNAME} rviz "${ADS_SRC}/rviz"
+COPY --chown=${USERNAME}:${USERNAME} test "${ADS_SRC}/test"
+COPY --chown=${USERNAME}:${USERNAME} autonomous_driving_simulators "${ADS_SRC}/autonomous_driving_simulators"
 
 ENV PYTHONWARNINGS="ignore:::setuptools.command.install,ignore:::setuptools.command.easy_install,ignore:::pkg_resources,ignore:::setuptools.command.develop"
 
