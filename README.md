@@ -4,7 +4,7 @@ A ROS2 Humble research platform that bridges **CARLA** and **AWSIM** simulators 
 
 | Configuration | Simulator | Status |
 |---|---|---|
-| `docker-compose.yml` | CARLA 0.9.15 + Autoware | Primary |
+| `docker-compose.yml` | CARLA 0.9.14 + Autoware | Primary |
 | `docker-compose.awsim.yml` | AWSIM Labs 1.1.1 + Autoware | Supported |
 | Source build | CARLA or AWSIM | See below |
 
@@ -32,12 +32,17 @@ A ROS2 Humble research platform that bridges **CARLA** and **AWSIM** simulators 
 │  └────────┬──────────────────────────────────────────┘                  │
 │           │ ROS2 DDS (CycloneDDS, ROS_DOMAIN_ID)                        │
 │  ┌────────▼──────────────────────────────────────────┐                  │
-│  │                   autoware                         │                 │
-│  │  Perception: ground seg → clustering → tracking    │                 │
-│  │  Planning:   global planner + waypoint follower    │                 │
-│  │  Control:    MPC / Pure Pursuit / PID cascade      │                 │
-│  │  SLAM:       RTABMap (ICP + RGBD odometry)         │                 │
-│  └────────────────────────────────────────────────────┘                 │
+│  │                   autoware                          │                 │
+│  │  Perception: ground seg → clustering → tracking     │                 │
+│  │  carla_autoware_bridge (status / actuation loop)    │                 │
+│  └────────┬───────────────────────────────────────────┘                 │
+│           │ ROS2 DDS                                                     │
+│  ┌────────▼──────────────────────────────────────────┐                  │
+│  │                 custom-nodes                        │                 │
+│  │  Control: MPC / Pure Pursuit / PID cascade          │                 │
+│  │  SLAM:    RTABMap (ICP + RGBD odometry)             │                 │
+│  │  Teleop:  joy + joy_teleop + ackermann_mux          │                 │
+│  └─────────────────────────────────────────────────────┘                │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -151,24 +156,29 @@ AWSIM opens a Unity window on the host display. Autoware subscribes to its ROS2 
 # Build a single service
 docker compose build carla-server
 docker compose build carla-ros-bridge
+docker compose build custom-nodes     # controllers (MPC/PurePursuit) + SLAM + teleop
 docker compose build autoware
 docker compose build awsim            # uses docker-compose.awsim.yml
 docker compose build traffic-generator
 
 # Override build args (example: different CARLA version)
-docker compose build --build-arg CARLA_VERSION=0.9.14 carla-server
+docker compose build --build-arg CARLA_VERSION=0.9.15 carla-server
 ```
 
 ### Build argument reference
 
 | Service | Arg | Default |
 |---|---|---|
-| carla-server | `CARLA_VERSION` | `0.9.15` |
+| carla-server | `CARLA_VERSION` | `0.9.14` |
 | carla-server | `CUDA_VERSION` | `12.3.2` |
-| carla-ros-bridge | `CARLA_VERSION` | `0.9.15` |
+| carla-ros-bridge | `CARLA_VERSION` | `0.9.14` |
 | carla-ros-bridge | `ROBOTICS010_BRANCH` | `feature/add-humble-support` |
+| custom-nodes | `CARLA_VERSION` | `0.9.14` |
+| custom-nodes | `CUDA_VERSION` | `12.2` |
 | awsim | `AWSIM_VERSION` | `1.1.1` |
 | autoware | `ACADOS_NUM_THREADS` | `6` |
+
+> Flip `CARLA_VERSION` to `0.9.15` (in `.env` or as a `--build-arg`) on capable machines; `0.9.14` is the default across all services.
 
 ---
 
@@ -179,15 +189,22 @@ docker compose build --build-arg CARLA_VERSION=0.9.14 carla-server
 | Variable | Default | Description |
 |---|---|---|
 | `ROS_DOMAIN_ID` | `0` | Isolates DDS traffic from other ROS2 nodes on the host |
-| `CARLA_VERSION` | `0.9.15` | CARLA release tag |
+| `CARLA_VERSION` | `0.9.14` | CARLA release tag (flip to `0.9.15` on capable machines) |
 | `CARLA_HOST` | `localhost` | Host/IP of the CARLA server (for bridge container) |
 | `CARLA_PORT` | `2000` | RPC port |
-| `CARLA_TOWN` | `Town01` | Map to load on startup |
-| `CARLA_FPS` | `20` | Simulation tick rate (Hz) |
+| `CARLA_TOWN` | `Town01` | Map the bridge loads via `load_world()` when `RELOAD_MAP=True` |
+| `CARLA_FPS` | `20` | Simulation tick rate (Hz); must equal `1/fixed_delta_seconds` |
 | `CARLA_QUALITY` | `Low` | Rendering quality: `Low` \| `Medium` \| `High` \| `Epic` |
+| `CARLA_HEADLESS` | `true` | `true` → xvfb + `-RenderOffScreen` (no window); `false` → windowed (needs `xhost +local:docker`) |
+| `RELOAD_MAP` | `True` | `False` → bridge attaches to the already-loaded map (skips `load_world()`); set `False` when a heavy-map reload crashes the server |
+| `VIEW` | `False` | `True` → launch the `carla_manual_control` pygame viewer (needs `DISPLAY` + a spawned ego) |
+| `REMAP_TO_AUTOWARE` | `True` | `True` → remap raw CARLA sensor topics to Autoware `sensing/*`; `False` → keep raw `/carla/<role>/*` topics |
+| `LAUNCH_BUILTIN_AGENT` | `True` | `True` → run CARLA's built-in AD agent; set `False` when driving with a custom controller or manual control |
+| `OBJECTS_DEFINITION_FILE` | `/config/obstacles.json` | Sensor/actor JSON the bridge spawns (`objects.json` for a clean ego-only run) |
+| `SPAWN_POINT` | Town01 pose | Ego spawn pose `x,y,z,roll,pitch,yaw`; set to `None` for a random valid spawn |
 | `AWSIM_VERSION` | `1.1.1` | AWSIM Labs release tag |
 | `VEHICLE_ID` | `default` | Autoware vehicle configuration ID |
-| `MPC_MODEL_PATH` | `/home/carla/sdks/mpc/carla` | Path inside the autoware container to compiled MPC model |
+| `MPC_MODEL_PATH` | `/home/carla/sdks/mpc/carla` | Path inside the autoware/custom-nodes container to compiled MPC model |
 | `WAYPOINTS_CSV` | `/waypoints/waypoints.csv` | Path inside containers to pre-recorded waypoints |
 | `NUM_VEHICLES` | `30` | Vehicles for traffic generator |
 | `NUM_WALKERS` | `10` | Pedestrians for traffic generator |
@@ -240,6 +257,23 @@ Key arguments (pass as `arg_name:=value`):
 | `custom_controller` | `mpc` | `mpc` or `purepursuit` |
 | `waypoints_csv` | env `WAYPOINTS_CSV` | Path to waypoints CSV |
 | `mpc_build_directory` | env `MPC_MODEL_PATH` | Path to compiled MPC model |
+
+### `carla/simulation_bringup.launch.py` — bridge + ego + planner (Docker Compose path)
+
+This is what the `carla-ros-bridge` Compose service actually runs. It includes the bridge,
+spawns the ego vehicle, publishes the target speed, starts the global planner, and (when
+`launch_builtin_agent:=True`) runs CARLA's built-in AD agent for smoke tests.
+
+| Argument | Default | Description |
+|---|---|---|
+| `host` / `port` | `localhost` / `2000` | CARLA server endpoint |
+| `town` | `Town01` | Map (spawn/goal defaults are Town01-valid) |
+| `reload_map` | `True` | `False` → attach to the already-loaded map (skips `load_world()`) |
+| `view` | `False` | Launch the `carla_manual_control` pygame viewer |
+| `launch_builtin_agent` | `True` | Run the built-in AD agent; set `False` for custom/manual control |
+| `remap_to_autoware` | `False` | Remap raw CARLA topics to Autoware `sensing/*` |
+| `launch_autoware_bridge` | `False` | Also start `carla_autoware_bridge` |
+| `spawn_point` | Town01 pose | Ego spawn pose; `None` → random valid spawn |
 
 ### `carla/carla_ros_bridge.launch.py` — bridge-only launch
 
@@ -327,7 +361,8 @@ The MPC controller reads the CSV and follows the recorded trajectory.
 
 | Limitation | Detail |
 |---|---|
-| CARLA has no `odom` TF frame | CARLA's pseudo-odometry uses a custom frame. RTABMap's `map_frame_id` is set to `map` for TF compatibility. |
+| CARLA has no `odom` TF frame | CARLA's pseudo-odometry uses a custom frame. RTABMap's `map_frame_id` is set to `rtabmap` (not `map`) to avoid colliding with CARLA's built-in TF tree. |
+| Heavy-map `load_world()` can crash weak hosts | A client-triggered reload of a heavy map (Town03/Town10HD) can time out and kill an under-resourced server. Use `RELOAD_MAP=False` to attach to a pre-loaded map; Town01 reloads fine. |
 | AWSIM requires a display | v1.1.1 has no headless flag. Use `xhost +local:docker` and pass `DISPLAY`. |
 | `autoware_perception_simple.launch.xml` | Placeholder — four nodes listed in the header comment are not yet implemented. |
 | CARLA `fixed_delta_seconds` must match FPS | Set `fixed_delta_seconds = 1 / CARLA_FPS` (default 0.05 @ 20 Hz). |
@@ -411,6 +446,7 @@ DISPLAY=:0 docker compose -f docker-compose.awsim.yml up
 ├── docker/
 │   ├── carla-server/Dockerfile    # UE4 binary only
 │   ├── carla-ros-bridge/Dockerfile# ROS bridge (no full Autoware)
+│   ├── custom-nodes/Dockerfile    # Controllers (MPC/PurePursuit) + SLAM + teleop
 │   ├── awsim/Dockerfile           # Unity simulator
 │   ├── autoware/Dockerfile        # Autoware + MPC + Nav2 (no CARLA)
 │   └── traffic-generator/Dockerfile# Python + CARLA client only
@@ -424,6 +460,7 @@ DISPLAY=:0 docker compose -f docker-compose.awsim.yml up
 │   │   ├── ground_segmentation.launch.py
 │   │   └── ...
 │   └── carla/
+│       ├── simulation_bringup.launch.py  # Bridge + ego + planner (Compose path)
 │       ├── carla_ros_bridge.launch.py
 │       └── mapping.launch.py      # RTABMap SLAM
 ├── scripts/
