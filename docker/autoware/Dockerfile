@@ -1,5 +1,5 @@
-# Autoware humble — full perception / planning / control stack
-# No CARLA binary or Python client — pure Autoware + project packages.
+# Autoware humble — full perception / planning / control stack + Autoware bridge
+# No CARLA binary or Python client — pure Autoware + project packages + bridge.
 FROM ghcr.io/autowarefoundation/autoware:20240618-devel-cuda-amd64
 
 ARG USERNAME=carla
@@ -43,51 +43,6 @@ WORKDIR /home/${USERNAME}
 
 RUN python3 -m pip install -U pip "setuptools<71.0.0" wheel
 
-# ── MPC Toolchain ────────────────────────────────────────────────────────────
-RUN python3 -m pip install --no-cache-dir \
-    "do-mpc" "casadi==3.6.6" \
-    "transforms3d==0.4.2" "scipy==1.12.0" \
-    networkx simple-pid
-
-# Acados — model predictive control library with C code generation
-ARG ACADOS_NUM_THREADS=6
-ARG ACADOS_OPENMP=ON
-ENV ACADOS_ROOT=/home/${USERNAME}/sdks/acados
-ENV ACADOS_PATH=${ACADOS_ROOT}
-ENV ACADOS_SOURCE_DIR=${ACADOS_ROOT}
-
-RUN mkdir -p /home/${USERNAME}/sdks \
-    && cd /home/${USERNAME}/sdks \
-    && git clone https://github.com/acados/acados.git \
-    && cd acados \
-    && git submodule update --recursive --init \
-    && mkdir build && cd build \
-    && cmake \
-        -DACADOS_WITH_QPOASES=ON \
-        -DACADOS_WITH_OSQP=ON \
-        -DACADOS_INSTALL_DIR="${ACADOS_ROOT}" \
-        -DCMAKE_BUILD_TYPE=Release \
-        "-DACADOS_NUM_THREADS=${ACADOS_NUM_THREADS}" \
-        "-DACADOS_WITH_OPENMP=${ACADOS_OPENMP}" .. \
-    && make -j"$(($(nproc)-1))" \
-    && sudo make install -j"$(($(nproc)-1))" \
-    && python3 -m pip install --use-pep517 --user \
-        -e "${ACADOS_ROOT}/interfaces/acados_template"
-
-# tera_renderer — code generation backend for Acados Python interface
-# apt rustc in Ubuntu 22.04 is 1.75 which lacks edition2024 (needs 1.85+); use rustup instead.
-# mkdir -p is required because cmake install does not create the bin/ directory.
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
-    && mkdir -p "${ACADOS_ROOT}/bin" \
-    && cd "${ACADOS_ROOT}/bin" \
-    && git clone https://github.com/acados/tera_renderer.git \
-    && cd tera_renderer \
-    && . "$HOME/.cargo/env" \
-    && cargo build --verbose --release \
-    && cp target/release/t_renderer "${ACADOS_ROOT}/bin"
-
-ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${ACADOS_ROOT}/lib"
-
 # ── ROS2 system deps ─────────────────────────────────────────────────────────
 RUN sudo apt-get update && sudo apt-get install -y --no-install-recommends \
     "ros-${ROS_DISTRO}-tf2-tools" \
@@ -96,16 +51,11 @@ RUN sudo apt-get update && sudo apt-get install -y --no-install-recommends \
     "ros-${ROS_DISTRO}-tf2-geometry-msgs" \
     "ros-${ROS_DISTRO}-derived-object-msgs" \
     "ros-${ROS_DISTRO}-ackermann-msgs" \
-    "ros-${ROS_DISTRO}-slam-toolbox" \
     "ros-${ROS_DISTRO}-robot-localization" \
     "ros-${ROS_DISTRO}-imu-tools" \
     "ros-${ROS_DISTRO}-nav2-msgs" \
     "ros-${ROS_DISTRO}-navigation2" \
     "ros-${ROS_DISTRO}-nav2-bringup" \
-    "ros-${ROS_DISTRO}-rtabmap-odom" \
-    "ros-${ROS_DISTRO}-rtabmap-slam" \
-    "ros-${ROS_DISTRO}-rtabmap-launch" \
-    "ros-${ROS_DISTRO}-rtabmap-viz" \
     libpcl-dev \
     && sudo rm -rf /var/lib/apt/lists/*
 
@@ -117,10 +67,10 @@ RUN mkdir -p "${BUILD_HOME}/src"
 RUN cd "${BUILD_HOME}/src" \
     && git clone https://github.com/privvyledge/autonomous_driving_simulators.git \
        -b ros2_launch \
-    && git clone https://github.com/privvyledge/trajectory_following_ros2.git \
-    && git clone https://github.com/f1tenth/teleop_tools.git -b foxy-devel \
-    && git clone https://github.com/f1tenth/ackermann_mux.git -b foxy-devel \
-    && git clone https://github.com/ros-teleop/twist_mux.git -b rolling
+    && git clone https://github.com/Robotics010/carla_autoware_bridge.git \
+       -b feature/add-humble-support \
+    && git clone https://github.com/astuff/astuff_sensor_msgs.git -b master \
+    && git clone https://github.com/Robotics010/carla_tesla_model3_description.git
 
 ENV PYTHONWARNINGS="ignore:::setuptools.command.install,ignore:::setuptools.command.easy_install,ignore:::pkg_resources,ignore:::setuptools.command.develop"
 ENV CCACHE_DIR=/home/${USERNAME}/.ccache

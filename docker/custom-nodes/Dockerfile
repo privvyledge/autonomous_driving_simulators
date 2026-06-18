@@ -1,0 +1,229 @@
+# Custom Nodes humble — GPU accelerated container for control and SLAM nodes
+FROM nvidia/cuda:12.2.2-devel-ubuntu22.04
+
+ARG USERNAME=carla
+ARG USER_UID=1000
+ARG ROS_DISTRO=humble
+
+# CARLA client version — default 0.9.14 (matches the carla-server base and the
+# 0.9.14 dev server). Switch to 0.9.15 on another machine via the CARLA_VERSION
+# build arg / .env; the gezp wheel, the agents tag, and the bridge version-check
+# patch below all key off this single value.
+ARG CARLA_VERSION=0.9.14
+ARG UBUNTU_VERSION=22
+ARG PYTHON_MAJOR=3
+ARG PYTHON_MINOR=10
+ENV CARLA_VERSION=${CARLA_VERSION}
+
+ENV NVIDIA_DRIVER_CAPABILITIES=all
+ENV NVIDIA_VISIBLE_DEVICES=all
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ENV TZ=America/New_York
+ARG DEBIAN_FRONTEND=noninteractive
+
+# Update keys, locales, timezone and install development tools
+RUN apt-get update && apt-get install -yq --no-install-recommends \
+    sudo tzdata wget git curl unzip gnupg2 lsb-release locales iproute2 \
+    && locale-gen en_US en_US.UTF-8 \
+    && update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 \
+    && ln -fns /usr/share/zoneinfo/${TZ} /etc/localtime \
+    && dpkg-reconfigure -f noninteractive tzdata \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
+
+# Setup ROS 2 Humble apt repository
+RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | tee /etc/apt/sources.list.d/ros2.list > /dev/null
+
+# Install ROS 2 Humble base, vcstool, and development tools
+RUN apt-get update && apt-get install -yq --no-install-recommends \
+    ros-humble-ros-base \
+    python3-colcon-common-extensions \
+    python3-rosdep \
+    python3-vcstool \
+    python3-pip \
+    python3-wheel \
+    python3-setuptools \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Setup user
+RUN groupadd --gid "${USER_UID}" "${USERNAME}" \
+    && (groupadd --system render || true) \
+    && useradd --create-home --shell /bin/bash \
+       -g "${USERNAME}" -G sudo,video,audio,render "${USERNAME}" --uid "${USER_UID}" \
+    && echo "${USERNAME}:${USERNAME}" | chpasswd \
+    && echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" >> "/etc/sudoers.d/${USERNAME}" \
+    && chmod 0440 "/etc/sudoers.d/${USERNAME}"
+
+# Initialize rosdep
+RUN rosdep init || true
+
+USER ${USERNAME}
+WORKDIR /home/${USERNAME}
+
+# Setuptools constraint
+RUN python3 -m pip install -U pip "setuptools<71.0.0" wheel
+
+# ── MPC Toolchain ────────────────────────────────────────────────────────────
+RUN python3 -m pip install --no-cache-dir \
+    "do-mpc" "casadi==3.7.2" \
+    "transforms3d==0.4.2" "scipy==1.15.3" \
+    networkx simple-pid
+
+# ── CARLA Python client ───────────────────────────────────────────────────────
+# Prebuilt cp310 wheel (gezp/carla_ros) for the configured CARLA_VERSION. Provides
+# the `carla` package AND a carla-<ver>.dist-info, so pkg_resources.get_distribution
+# ("carla") works — that is what carla_ros_bridge checks at startup. No host copy.
+RUN python3 -m pip install --no-cache-dir \
+    "https://github.com/gezp/carla_ros/releases/download/carla-${CARLA_VERSION}-ubuntu-${UBUNTU_VERSION}.04/carla-${CARLA_VERSION}-cp${PYTHON_MAJOR}${PYTHON_MINOR}-cp${PYTHON_MAJOR}${PYTHON_MINOR}-linux_x86_64.whl"
+
+# CARLA `agents` PythonAPI package (global route planner used by
+# carla_waypoint_publisher) — NOT bundled in the wheel. Sparse-checkout just that
+# directory at the matching tag and drop it beside the installed `carla` package.
+RUN git clone --depth 1 --filter=blob:none --sparse \
+        -b "${CARLA_VERSION}" https://github.com/carla-simulator/carla.git /tmp/carla_src \
+    && git -C /tmp/carla_src sparse-checkout set PythonAPI/carla/agents \
+    && SITE_PKGS="$(python3 -c 'import carla, os; print(os.path.dirname(os.path.dirname(os.path.realpath(carla.__file__))))')" \
+    && cp -r /tmp/carla_src/PythonAPI/carla/agents "${SITE_PKGS}/agents" \
+    && rm -rf /tmp/carla_src
+
+# Pin NumPy to the 1.x ABI — NumPy 2.x breaks cv_bridge (built against NumPy 1.x).
+# Last pip action wins, so this survives the carla wheel's own numpy requirement.
+RUN python3 -m pip install --no-cache-dir "numpy==1.26.4"
+
+# Acados
+ARG ACADOS_NUM_THREADS=6
+ARG ACADOS_OPENMP=ON
+ENV ACADOS_ROOT=/home/${USERNAME}/sdks/acados
+ENV ACADOS_PATH=${ACADOS_ROOT}
+ENV ACADOS_SOURCE_DIR=${ACADOS_ROOT}
+
+RUN mkdir -p /home/${USERNAME}/sdks \
+    && cd /home/${USERNAME}/sdks \
+    && git clone https://github.com/acados/acados.git \
+    && cd acados \
+    && git submodule update --recursive --init \
+    && mkdir build && cd build \
+    && cmake \
+        -DACADOS_WITH_QPOASES=ON \
+        -DACADOS_WITH_OSQP=ON \
+        -DACADOS_INSTALL_DIR="${ACADOS_ROOT}" \
+        -DCMAKE_BUILD_TYPE=Release \
+#        "-DACADOS_NUM_THREADS=${ACADOS_NUM_THREADS}" \
+        "-DACADOS_WITH_OPENMP=${ACADOS_OPENMP}" .. \
+    && make -j"$(($(nproc)-1))" \
+    && sudo make install -j"$(($(nproc)-1))" \
+    && python3 -m pip install --use-pep517 --user \
+        -e "${ACADOS_ROOT}/interfaces/acados_template"
+
+# tera_renderer
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
+    && mkdir -p "${ACADOS_ROOT}/bin" \
+    && cd "${ACADOS_ROOT}/bin" \
+    && git clone https://github.com/acados/tera_renderer.git \
+    && cd tera_renderer \
+    && . "$HOME/.cargo/env" \
+    && cargo build --verbose --release \
+    && cp target/release/t_renderer "${ACADOS_ROOT}/bin"
+
+ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${ACADOS_ROOT}/lib"
+
+# ── ROS2 system deps ─────────────────────────────────────────────────────────
+RUN sudo apt-get update && sudo apt-get install -y --no-install-recommends \
+    "ros-${ROS_DISTRO}-tf2-tools" \
+    "ros-${ROS_DISTRO}-tf-transformations" \
+    "ros-${ROS_DISTRO}-rqt-tf-tree" \
+    "ros-${ROS_DISTRO}-tf2-geometry-msgs" \
+    "ros-${ROS_DISTRO}-derived-object-msgs" \
+    "ros-${ROS_DISTRO}-ackermann-msgs" \
+    "ros-${ROS_DISTRO}-rmw-cyclonedds-cpp" \
+    "ros-${ROS_DISTRO}-topic-tools" \
+    "ros-${ROS_DISTRO}-slam-toolbox" \
+    "ros-${ROS_DISTRO}-robot-localization" \
+    "ros-${ROS_DISTRO}-imu-tools" \
+    "ros-${ROS_DISTRO}-nav2-msgs" \
+    "ros-${ROS_DISTRO}-navigation2" \
+    "ros-${ROS_DISTRO}-nav2-bringup" \
+    "ros-${ROS_DISTRO}-rtabmap-odom" \
+    "ros-${ROS_DISTRO}-rtabmap-slam" \
+    "ros-${ROS_DISTRO}-rtabmap-launch" \
+    "ros-${ROS_DISTRO}-rtabmap-viz" \
+    libpcl-dev \
+    && sudo rm -rf /var/lib/apt/lists/*
+
+# ── ROS2 workspace ───────────────────────────────────────────────────────────
+ENV BUILD_HOME=/home/${USERNAME}/carla_ros_ws
+RUN mkdir -p "${BUILD_HOME}/src"
+
+# Copy custom.repos into workspace and import via vcstool
+COPY custom.repos "${BUILD_HOME}/custom.repos"
+RUN cd "${BUILD_HOME}" \
+    && vcs import src < custom.repos
+
+# Clone remaining control/sim packages not in custom.repos
+RUN cd "${BUILD_HOME}/src" \
+    && git clone --recurse-submodules https://github.com/privvyledge/ros-bridge.git -b feature/add-humble-support \
+    && git clone https://github.com/f1tenth/teleop_tools.git -b foxy-devel \
+    && git clone https://github.com/f1tenth/ackermann_mux.git -b foxy-devel \
+    && git clone https://github.com/ros-teleop/twist_mux.git -b rolling
+
+# Align carla_ros_bridge's expected client version with the installed client.
+# The bridge compares pkg_resources.get_distribution("carla") against a bundled
+# CARLA_VERSION file and aborts on mismatch; rewrite every such file to the
+# configured version so 0.9.14 (or 0.9.15) is accepted without a runtime patch.
+RUN find "${BUILD_HOME}/src" -name CARLA_VERSION -type f \
+        -exec sh -c 'printf "%s\n" "$1" > "$2"' _ "${CARLA_VERSION}" {} \;
+
+# Copy the local autonomous_driving_simulators package from the build context
+# instead of cloning it from GitHub, so local edits are baked into the image.
+# Explicit per-directory copies preserve the package layout and keep build-cache
+# invalidation scoped to the package (not the whole repo / compose files).
+ENV ADS_SRC="${BUILD_HOME}/src/autonomous_driving_simulators"
+COPY --chown=${USERNAME}:${USERNAME} package.xml setup.py setup.cfg requirements.txt "${ADS_SRC}/"
+COPY --chown=${USERNAME}:${USERNAME} resource "${ADS_SRC}/resource"
+COPY --chown=${USERNAME}:${USERNAME} config "${ADS_SRC}/config"
+COPY --chown=${USERNAME}:${USERNAME} launch "${ADS_SRC}/launch"
+COPY --chown=${USERNAME}:${USERNAME} data "${ADS_SRC}/data"
+COPY --chown=${USERNAME}:${USERNAME} scripts "${ADS_SRC}/scripts"
+COPY --chown=${USERNAME}:${USERNAME} rviz "${ADS_SRC}/rviz"
+COPY --chown=${USERNAME}:${USERNAME} test "${ADS_SRC}/test"
+COPY --chown=${USERNAME}:${USERNAME} autonomous_driving_simulators "${ADS_SRC}/autonomous_driving_simulators"
+
+ENV PYTHONWARNINGS="ignore:::setuptools.command.install,ignore:::setuptools.command.easy_install,ignore:::pkg_resources,ignore:::setuptools.command.develop"
+
+ARG SKIPPED_ROSDEP_KEYS="k4a lio_sam fast_lio rf2o_laser_odometry cmake_modules pacmod3_msgs python3-open3d open3d librealsense2 realsense2_camera libopencv-dev libopencv-contrib-dev libopencv-imgproc-dev python-opencv python3-opencv"
+
+RUN cd "${BUILD_HOME}" \
+    && sudo apt-get update \
+    && source /opt/ros/${ROS_DISTRO}/setup.bash \
+    && rosdep update \
+    && rosdep install --from-paths src --ignore-src -r -y -q \
+       --os=ubuntu:jammy --rosdistro="${ROS_DISTRO}" \
+       --skip-keys "${SKIPPED_ROSDEP_KEYS}" \
+    && sudo rm -rf /var/lib/apt/lists/*
+
+RUN source /opt/ros/${ROS_DISTRO}/setup.bash \
+    && cd "${BUILD_HOME}" \
+    && colcon build --symlink-install \
+       --event-handlers console_direct+ \
+       --base-paths src \
+       --cmake-args \
+         ' -Wno-dev' ' --no-warn-unused-cli' \
+         ' -DCMAKE_BUILD_TYPE=Release' \
+         ' -DCMAKE_LIBRARY_PATH=/usr/local/cuda/lib64/stubs' \
+         ' -DBOOST_BIND_GLOBAL_PLACEHOLDERS=1' \
+         ' -DCMAKE_CXX_FLAGS="-Wl,--allow-shlib-undefined"' \
+         ' -DDOWNLOAD_ARTIFACTS=ON'
+
+RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> ~/.bashrc \
+    && echo "source ${BUILD_HOME}/install/setup.bash" >> ~/.bashrc \
+    && echo "sudo sysctl -w net.core.rmem_max=2147483647" >> ~/.bashrc \
+    && echo "sudo sysctl -w net.ipv4.ipfrag_time=3" >> ~/.bashrc \
+    && echo "sudo sysctl -w net.ipv4.ipfrag_high_thresh=134217728" >> ~/.bashrc \
+    && echo "sudo ip link set lo multicast on" >> ~/.bashrc
+
+WORKDIR /home/${USERNAME}

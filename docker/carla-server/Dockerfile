@@ -1,15 +1,11 @@
-# CARLA 0.9.15 UE4 server — GPU only, no ROS
-# Uses CUDA runtime (not devel) to keep image size down.
-ARG CUDA_VERSION=12.3.2
-ARG CUDNN_VERSION=9
-ARG UBUNTU_VERSION=22.04
+# CARLA UE4 server — GPU only, no ROS
+# Base: official carlasim image; ships the full UE4/Vulkan/GL runtime.
+# Default 0.9.14 to match the rest of the stack; override with CARLA_VERSION.
+ARG CARLA_VERSION=0.9.14
 
-FROM nvidia/cuda:${CUDA_VERSION}-cudnn${CUDNN_VERSION}-runtime-ubuntu${UBUNTU_VERSION}
+FROM carlasim/carla:${CARLA_VERSION}
 
-ARG CARLA_VERSION=0.9.15
-ARG PYTHON_VERSION=3.10
-ARG USERNAME=carla
-ARG USER_UID=1000
+ARG CARLA_VERSION=0.9.14
 
 ENV CARLA_VERSION=${CARLA_VERSION}
 ENV NVIDIA_DRIVER_CAPABILITIES=all
@@ -19,54 +15,35 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ENV TZ=America/New_York
 ARG DEBIAN_FRONTEND=noninteractive
 
+# Add xvfb (headless virtual display) and sudo.
+# The official image runs as user 'carla'; we need root momentarily.
+USER root
+
 RUN apt-get update && apt-get install -yq --no-install-recommends \
-    sudo tzdata wget unzip \
-    libvulkan1 libomp5 \
-    xdg-user-dirs xdg-utils \
-    alsa-utils \
-    python${PYTHON_VERSION} python3-pip \
-    && ln -fns /usr/share/zoneinfo/${TZ} /etc/localtime \
-    && echo "${TZ}" > /etc/timezone \
-    && dpkg-reconfigure -f noninteractive tzdata \
-    && rm -rf /var/lib/apt/lists/*
+    sudo xvfb \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /etc/sudoers.d \
+    && echo "carla ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/carla \
+    && chmod 0440 /etc/sudoers.d/carla \
+    && mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix \
+    && printf '%s\n' \
+       '#!/bin/bash' \
+       'set -e' \
+       'CARLA_ARGS=(-prefernvidia -nosound -benchmark "-fps=${CARLA_FPS:-20}" "-quality-level=${CARLA_QUALITY:-Low}")' \
+       'if [ "${CARLA_HEADLESS:-true}" = "true" ]; then' \
+       '    sudo mkdir -p /tmp/.X11-unix && sudo chmod 1777 /tmp/.X11-unix' \
+       '    # Clear stale X lock/socket left by a previous crashed run so Xvfb :99 can rebind' \
+       '    sudo rm -f /tmp/.X99-lock /tmp/.X11-unix/X99' \
+       '    Xvfb :99 -screen 0 1280x1024x24 -nolisten tcp &' \
+       '    until [ -S /tmp/.X11-unix/X99 ]; do sleep 0.2; done' \
+       '    export DISPLAY=:99' \
+       '    CARLA_ARGS+=(-RenderOffScreen)' \
+       'fi' \
+       'exec /bin/bash CarlaUE4.sh "${CARLA_ARGS[@]}"' \
+       > /entrypoint.sh \
+    && chmod +x /entrypoint.sh
 
-# The nvidia-cuda base image does not ship the Vulkan ICD JSON that tells the
-# loader where to find the NVIDIA Vulkan driver.  The actual libGLX_nvidia.so.0
-# is injected at runtime by the NVIDIA Container Toolkit (NVIDIA_DRIVER_CAPABILITIES=all);
-# we only need the pointer file.
-RUN mkdir -p /usr/share/vulkan/icd.d \
-    && printf '{"file_format_version":"1.0.0","ICD":{"library_path":"libGLX_nvidia.so.0","api_version":"1.3.0"}}\n' \
-       > /usr/share/vulkan/icd.d/nvidia_icd.json
-
-RUN useradd --create-home --shell /bin/bash -g root -G sudo,video "${USERNAME}" \
-    --uid "${USER_UID}" \
-    && echo "${USERNAME}:${USERNAME}" | chpasswd \
-    && echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" >> "/etc/sudoers.d/${USERNAME}" \
-    && chmod 0440 "/etc/sudoers.d/${USERNAME}"
-
-USER ${USERNAME}
-WORKDIR /home/${USERNAME}
-
-# Download and extract CARLA binary
-RUN mkdir -p Downloads && cd Downloads \
-    && wget -q "https://carla-releases.s3.us-east-005.backblazeb2.com/Linux/CARLA_${CARLA_VERSION}.tar.gz" \
-    && mkdir -p /home/${USERNAME}/carla_simulator \
-    && tar -xzf "CARLA_${CARLA_VERSION}.tar.gz" -C /home/${USERNAME}/carla_simulator \
-    && rm "CARLA_${CARLA_VERSION}.tar.gz"
-
-# Install CARLA Python client — used only by the healthcheck
-RUN python3 -m pip install --no-cache-dir \
-    "carla==${CARLA_VERSION}" 2>/dev/null \
-    || python3 -m pip install --no-cache-dir \
-       /home/${USERNAME}/carla_simulator/PythonAPI/carla/dist/carla-*.whl
-
-RUN cd /home/${USERNAME}/carla_simulator \
-    && /bin/bash ./ImportAssets.sh 2>/dev/null || true
-
-ENV CARLA_ROOT=/home/${USERNAME}/carla_simulator
-ENV SDL_VIDEODRIVER=offscreen
-
-WORKDIR ${CARLA_ROOT}
+USER carla
 
 # 2000: RPC   2001: streaming   2002: secondary ROS bridge port
 EXPOSE 2000 2001 2002
@@ -74,7 +51,4 @@ EXPOSE 2000 2001 2002
 HEALTHCHECK --interval=15s --timeout=10s --start-period=45s --retries=5 \
     CMD python3 -c "import carla; c=carla.Client('localhost',2000); c.set_timeout(5.0); c.get_server_version(); print('ok')"
 
-CMD ["/bin/bash", "./CarlaUE4.sh", \
-     "-prefernvidia", "-nosound", \
-     "-benchmark", "-fps=20", \
-     "-RenderOffScreen", "-quality-level=Low"]
+ENTRYPOINT ["/entrypoint.sh"]

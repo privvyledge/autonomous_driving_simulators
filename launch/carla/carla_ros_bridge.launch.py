@@ -20,9 +20,12 @@
 #   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #   SOFTWARE.
 
-from ament_index_python.packages import get_package_share_directory
 import launch
 import launch_ros.actions
+from launch.actions import GroupAction
+from launch.conditions import IfCondition
+from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import SetRemap
 
 
 def generate_launch_description():
@@ -84,24 +87,50 @@ def generate_launch_description():
                            'hero3', 'hero4', 'hero5', 'hero6', 'hero7', 'hero8', 'hero9'],
             description='Role names to identify ego vehicles. '
         ),
-        launch.actions.DeclareLaunchArgument(
-            name='csv_path_steer_map',
-            default_value=get_package_share_directory(
-                'carla_autoware_bridge') + '/data/carla_tesla_model3/steer_map.csv'
-        ),
+
         launch.actions.DeclareLaunchArgument(
             name='use_sim_time',
             default_value='True',
             description='Use simulated clock from the CARLA server'
         ),
-        launch_ros.actions.Node(
-            package='carla_ros_bridge',
-            executable='bridge',
-            name='carla_ros_bridge',
-            output='screen',
-            emulate_tty='True',
-            on_exit=launch.actions.Shutdown(),
-            parameters=[
+        launch.actions.DeclareLaunchArgument(
+            name='remap_to_autoware',
+            default_value='True',
+            description=('Whether to remap the raw CARLA sensor topics to '
+                         'Autoware sensing topics. Set to False to publish the '
+                         'raw /carla/<role_name>/* topics unchanged.')
+        ),
+        GroupAction([
+            # Conditional remaps: applied to the bridge node below only when
+            # remap_to_autoware is True. Skipped otherwise, leaving raw CARLA topics.
+            SetRemap(
+                '/carla/ego_vehicle/rgb_front/camera_info',
+                '/sensing/camera/traffic_light/camera_info',
+                condition=IfCondition(LaunchConfiguration('remap_to_autoware'))),
+            SetRemap(
+                '/carla/ego_vehicle/rgb_front/image',
+                '/sensing/camera/traffic_light/image_raw',
+                condition=IfCondition(LaunchConfiguration('remap_to_autoware'))),
+            SetRemap(
+                '/carla/ego_vehicle/gnss',
+                '/sensing/gnss/ublox/nav_sat_fix',
+                condition=IfCondition(LaunchConfiguration('remap_to_autoware'))),
+            SetRemap(
+                '/carla/ego_vehicle/imu',
+                '/sensing/imu/tamagawa/imu_raw',
+                condition=IfCondition(LaunchConfiguration('remap_to_autoware'))),
+            SetRemap(
+                '/carla/ego_vehicle/lidar',
+                '/sensing/lidar/top/pointcloud_raw',
+                condition=IfCondition(LaunchConfiguration('remap_to_autoware'))),
+            launch_ros.actions.Node(
+                package='carla_ros_bridge',
+                executable='bridge',
+                name='carla_ros_bridge',
+                output='screen',
+                emulate_tty='True',
+                on_exit=launch.actions.Shutdown(),
+                parameters=[
                 {
                     'use_sim_time': launch.substitutions.LaunchConfiguration('use_sim_time')
                 },
@@ -142,42 +171,8 @@ def generate_launch_description():
                         'ego_vehicle_role_name')
                 }
             ],
-            remappings=[
-                ('/carla/ego_vehicle/rgb_front/camera_info',
-                 '/sensing/camera/traffic_light/camera_info'),
-                ('/carla/ego_vehicle/rgb_front/image', '/sensing/camera/traffic_light/image_raw'),
-                ('/carla/ego_vehicle/gnss', '/sensing/gnss/ublox/nav_sat_fix'),
-                ('/carla/ego_vehicle/imu', '/sensing/imu/tamagawa/imu_raw'),
-                ('/carla/ego_vehicle/lidar', '/sensing/lidar/top/pointcloud_raw'),
-            ],
-        ),
-        launch_ros.actions.Node(
-            package='carla_autoware_bridge',
-            executable='carla_autoware_bridge',
-            name='carla_autoware_bridge',
-            on_exit=launch.actions.Shutdown(),
-            parameters=[
-                {
-                    'use_sim_time': launch.substitutions.LaunchConfiguration('use_sim_time')
-                },
-                {
-                    'csv_path_steer_map': launch.substitutions.LaunchConfiguration(
-                        'csv_path_steer_map')
-                }
-            ],
-            remappings=[
-                ('~/input/odometry', '/carla/ego_vehicle/odometry'),
-                ('~/input/status', '/carla/ego_vehicle/vehicle_status'),
-                ('~/input/steering', '/carla/ego_vehicle/vehicle_steering'),
-                ('~/input/actuation', '/control/command/actuation_cmd'),
-                ('~/input/lidar', '/sensing/lidar/top/pointcloud_raw'),
-                ('~/output/velocity_status', '/vehicle/status/velocity_status'),
-                ('~/output/steering_status', '/vehicle/status/steering_status'),
-                ('~/output/actuation_status', '/vehicle/status/actuation_status'),
-                ('~/output/control', '/carla/ego_vehicle/vehicle_control_cmd'),
-                ('~/output/lidar_ex', '/sensing/lidar/top/pointcloud_raw_ex'),
-            ],
-        )
+            )
+        ])
     ])
     return ld
 

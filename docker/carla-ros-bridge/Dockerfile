@@ -1,10 +1,10 @@
-# CARLA ROS2 Bridge + Autoware Bridge
-# Includes: carla_ros_bridge, carla_autoware_bridge, carla_spawn_objects,
+# CARLA ROS2 Bridge
+# Includes: carla_ros_bridge, carla_spawn_objects,
 #           carla_waypoint_publisher, carla_ackermann_control
-# Does NOT include the full Autoware planning/perception stack.
-FROM ghcr.io/autowarefoundation/autoware:20240618-devel-cuda-amd64
+# Does NOT include the full Autoware planning/perception stack or Autoware bridge.
+FROM ros:humble-ros-base
 
-ARG CARLA_VERSION=0.9.15
+ARG CARLA_VERSION=0.9.14
 ARG UBUNTU_VERSION=22
 ARG PYTHON_MAJOR=3
 ARG PYTHON_MINOR=10
@@ -34,7 +34,7 @@ RUN rm -f /etc/apt/sources.list.d/ros2*.list \
     && rm /tmp/ros2-apt-source.deb
 
 RUN apt-get update && apt-get install -yq --no-install-recommends \
-    sudo tzdata wget unzip git curl \
+    sudo tzdata wget unzip git curl python3-pip python3-wheel \
     && ln -fns /usr/share/zoneinfo/${TZ} /etc/localtime \
     && dpkg-reconfigure -f noninteractive tzdata \
     && rm -rf /var/lib/apt/lists/*
@@ -50,7 +50,6 @@ USER ${USERNAME}
 WORKDIR /home/${USERNAME}
 
 # CARLA Python client wheel for Python 3.10 on Ubuntu 22.04
-# Install directly from URL so pip sees the proper wheel filename (required for validation).
 RUN python3 -m pip install --no-cache-dir \
     "https://github.com/gezp/carla_ros/releases/download/carla-${CARLA_VERSION}-ubuntu-${UBUNTU_VERSION}.04/carla-${CARLA_VERSION}-cp${PYTHON_MAJOR}${PYTHON_MINOR}-cp${PYTHON_MAJOR}${PYTHON_MINOR}-linux_x86_64.whl"
 
@@ -81,9 +80,6 @@ RUN cd "${BUILD_HOME}/src/carla" \
     && git clone --recurse-submodules \
        https://github.com/privvyledge/ros-bridge.git \
        -b "${ROBOTICS010_BRANCH}" \
-    && git clone https://github.com/astuff/astuff_sensor_msgs.git -b master \
-    && git clone https://github.com/Robotics010/carla_autoware_bridge.git \
-       -b "${ROBOTICS010_BRANCH}" \
     && git clone https://github.com/Robotics010/carla_tesla_model3_description.git \
     && git clone https://github.com/Robotics010/carla_launch.git \
     && git clone https://github.com/Robotics010/carla_control_launch.git
@@ -105,9 +101,7 @@ RUN source /opt/ros/${ROS_DISTRO}/setup.bash \
        --base-paths src \
        --cmake-args \
          ' -Wno-dev' \
-         ' -DCMAKE_BUILD_TYPE=Release' \
-         ' -DCMAKE_LIBRARY_PATH=/usr/local/cuda/lib64/stubs' \
-         ' -DCMAKE_CXX_FLAGS="-Wl,--allow-shlib-undefined"'
+         ' -DCMAKE_BUILD_TYPE=Release'
 
 RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> ~/.bashrc \
     && echo "source ${BUILD_HOME}/install/setup.bash" >> ~/.bashrc \

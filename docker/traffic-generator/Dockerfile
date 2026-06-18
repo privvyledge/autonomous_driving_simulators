@@ -2,7 +2,7 @@
 # Runs generate_traffic.py to spawn vehicles and pedestrians in a live CARLA server.
 FROM python:3.10-slim-bullseye
 
-ARG CARLA_VERSION=0.9.15
+ARG CARLA_VERSION=0.9.14
 ARG UBUNTU_VERSION=22
 ARG PYTHON_MAJOR=3
 ARG PYTHON_MINOR=10

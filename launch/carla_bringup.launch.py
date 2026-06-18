@@ -103,6 +103,8 @@ def launch_setup(context, *args, **kwargs):
 
     ''' Carla ROS Bridge parameters '''
     launch_simulator = LaunchConfiguration('launch_simulator', default='True')
+    launch_ros_bridge = LaunchConfiguration('launch_ros_bridge', default='True')
+    remap_to_autoware = LaunchConfiguration('remap_to_autoware', default='False')
     host = LaunchConfiguration('host', default='localhost')
     port = LaunchConfiguration('port', default='2000')
     timeout = LaunchConfiguration('timeout', default='40')
@@ -167,6 +169,20 @@ def launch_setup(context, *args, **kwargs):
             name='launch_simulator',
             default_value=launch_simulator,
             description='Whether to launch the simulator. If False, make sure to start up carla somewhere else.'
+    )
+
+    launch_ros_bridge_la = DeclareLaunchArgument(
+            name='launch_ros_bridge',
+            default_value=launch_ros_bridge,
+            description='Whether to launch the carla_ros_bridge node. If False, make sure the bridge is '
+                        'started elsewhere (e.g. the carla-ros-bridge Docker service).'
+    )
+
+    remap_to_autoware_la = DeclareLaunchArgument(
+            name='remap_to_autoware',
+            default_value=remap_to_autoware,
+            description='Whether to remap the raw CARLA sensor topics to Autoware sensing topics. '
+                        'Set to False to publish the raw /carla/<role_name>/* topics unchanged.'
     )
 
     carla_simulator_script_la = DeclareLaunchArgument(
@@ -418,6 +434,8 @@ def launch_setup(context, *args, **kwargs):
     launch_args = [
         use_sim_time_la,
         launch_simulator_la,
+        launch_ros_bridge_la,
+        remap_to_autoware_la,
         carla_simulator_script_la,
         carla_simulator_python_script_la,
         objects_definition_file_la,
@@ -478,6 +496,19 @@ def launch_setup(context, *args, **kwargs):
     publish_fixed_goal_pose_string = publish_fixed_goal_pose.perform(context)
     goal_pose_string = goal_pose.perform(context)
     teleoperate_string = teleoperate.perform(context)
+    remap_to_autoware_string = remap_to_autoware.perform(context)
+
+    # Optionally remap raw CARLA sensor topics to Autoware sensing topics.
+    if remap_to_autoware_string.lower() == 'true':
+        carla_ros_bridge_remappings = [
+            (f'/carla/{role_name_string}/rgb_front/camera_info', '/sensing/camera/traffic_light/camera_info'),
+            (f'/carla/{role_name_string}/rgb_front/image', '/sensing/camera/traffic_light/image_raw'),
+            (f'/carla/{role_name_string}/gnss', '/sensing/gnss/ublox/nav_sat_fix'),
+            (f'/carla/{role_name_string}/imu', '/sensing/imu/tamagawa/imu_raw'),
+            (f'/carla/{role_name_string}/lidar', '/sensing/lidar/top/pointcloud_raw'),
+        ]
+    else:
+        carla_ros_bridge_remappings = []
 
     goal_pose_list = goal_pose_string.split(sep=',')
     goal_pose_orientation_quat = Rotation.from_euler('zyx', goal_pose_list[3:], degrees=True).as_quat().tolist()
@@ -629,6 +660,7 @@ def launch_setup(context, *args, **kwargs):
             name='carla_ros_bridge',
             output='log',
             emulate_tty='True',
+            condition=IfCondition(launch_ros_bridge),
             on_exit=launch.actions.Shutdown(),
             parameters=[
                 {
@@ -645,16 +677,11 @@ def launch_setup(context, *args, **kwargs):
                     'ego_vehicle_role_name': ego_vehicle_role_name
                 }
             ],
-            # remappings=[
-            #     (f'/carla/{role_name_string}/rgb_front/camera_info', '/sensing/camera/traffic_light/camera_info'),
-            #     (f'/carla/{role_name_string}/rgb_front/image', '/sensing/camera/traffic_light/image_raw'),
-            #     (f'/carla/{role_name_string}/gnss', '/sensing/gnss/ublox/nav_sat_fix'),
-            #     (f'/carla/{role_name_string}/imu', '/sensing/imu/tamagawa/imu_raw'),
-            #     (f'/carla/{role_name_string}/lidar', '/sensing/lidar/top/pointcloud_raw'),
+            remappings=carla_ros_bridge_remappings
+            # Additional optional remaps (kept off by default):
             #     (f'/carla/{role_name_string}/odometry', '/localization/kinematic_state'),
-            #     # (f'/carla/{role_name_string}/tamagawa/imu_link', f'/carla/{role_name_string}/imu'),
-            #     # (f'/carla/{role_name_string}/velodyne_top', f'/carla/{role_name_string}/lidar'),
-            # ]
+            #     (f'/carla/{role_name_string}/tamagawa/imu_link', f'/carla/{role_name_string}/imu'),
+            #     (f'/carla/{role_name_string}/velodyne_top', f'/carla/{role_name_string}/lidar'),
     )
 
     # https://carla.readthedocs.io/projects/ros-bridge/en/latest/carla_spawn_objects/
