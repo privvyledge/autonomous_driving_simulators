@@ -41,6 +41,11 @@ def launch_setup(context, *args, **kwargs):
     launch_autoware_bridge = LaunchConfiguration('launch_autoware_bridge')
     reload_map = LaunchConfiguration('reload_map')
     view = LaunchConfiguration('view')
+    launch_actuation = LaunchConfiguration('launch_actuation')
+    publish_twist = LaunchConfiguration('publish_twist')
+    control_loop_rate = LaunchConfiguration('control_loop_rate')
+    input_msg_is_stamped = LaunchConfiguration('input_msg_is_stamped')
+    teleoperate = LaunchConfiguration('teleoperate')
 
     carla_waypoint_following_kp_lateral = LaunchConfiguration('carla_waypoint_following_kp_lateral')
     carla_waypoint_following_ki_lateral = LaunchConfiguration('carla_waypoint_following_ki_lateral')
@@ -252,6 +257,63 @@ def launch_setup(context, *args, **kwargs):
         }.items()
     )
 
+    # 8. Low-level actuation for the custom-controller path. Converts /drive
+    #    (ackermann) or /twist into a CARLA vehicle_control_cmd. These nodes
+    #    (carla_ackermann_control / carla_twist_to_control) ship with the
+    #    ros-bridge that is built into THIS container, so they live here rather
+    #    than in custom-nodes. Gated off by default: when launch_actuation:=True
+    #    set launch_builtin_agent:=False, otherwise the built-in AD agent and the
+    #    actuation node both publish vehicle_control_cmd and fight for control.
+    pkg_share = get_package_share_directory('autonomous_driving_simulators')
+
+    actuation_ackermann_cmd_topic = '/drive'
+    if teleoperate.perform(context).lower() == 'true':
+        actuation_ackermann_cmd_topic = '/ackermann_cmd_' + role_name_string
+
+    carla_ackermann_control_node = Node(
+        package='carla_ackermann_control',
+        executable='carla_ackermann_control_node',
+        name='carla_ackermann_control_' + role_name_string,
+        output='screen',
+        condition=UnlessCondition(publish_twist),
+        parameters=[
+            os.path.join(pkg_share, 'config', 'PID_low_level.yaml'),
+            {
+                'use_sim_time': use_sim_time,
+                'role_name': role_name,
+                'control_loop_rate': control_loop_rate,
+                'input_msg_is_stamped': input_msg_is_stamped
+            }
+        ],
+        remappings=[
+            ('/carla/' + role_name_string + '/ackermann_cmd', actuation_ackermann_cmd_topic)
+        ]
+    )
+
+    carla_twist_to_control_node = Node(
+        package='carla_twist_to_control',
+        executable='carla_twist_to_control',
+        name='carla_twist_to_control_' + role_name_string,
+        output='screen',
+        emulate_tty=True,
+        condition=IfCondition(publish_twist),
+        parameters=[
+            {
+                'use_sim_time': use_sim_time,
+                'role_name': role_name,
+                'input_msg_is_stamped': input_msg_is_stamped
+            }
+        ],
+        remappings=[
+            ('/carla/' + role_name_string + '/twist', '/twist')
+        ]
+    )
+
+    actuation_group = GroupAction(
+        condition=IfCondition(launch_actuation),
+        actions=[carla_ackermann_control_node, carla_twist_to_control_node]
+    )
+
     return [
         carla_ros_bridge_launch,
         carla_spawn_objects_launch,
@@ -259,7 +321,8 @@ def launch_setup(context, *args, **kwargs):
         carla_waypoint_publisher_node,
         built_in_driver_group,
         carla_autoware_bridge_launch,
-        carla_manual_control_launch
+        carla_manual_control_launch,
+        actuation_group
     ]
 
 def generate_launch_description():
@@ -288,6 +351,11 @@ def generate_launch_description():
         DeclareLaunchArgument('launch_autoware_bridge', default_value='False', description='Launch autoware bridge'),
         DeclareLaunchArgument('reload_map', default_value='True', description="If False, attach to the already-loaded CARLA map instead of calling load_world() (avoids heavy-map reload crashes on resource-limited servers)."),
         DeclareLaunchArgument('view', default_value='False', description='Launch the carla_manual_control pygame viewer (needs a DISPLAY and a spawned ego).'),
+        DeclareLaunchArgument('launch_actuation', default_value='False', description='Run CARLA low-level actuation (carla_ackermann_control / carla_twist_to_control) in this container for the custom-controller path. Set launch_builtin_agent:=False when True so the built-in AD agent and the actuation node do not both publish vehicle_control_cmd.'),
+        DeclareLaunchArgument('publish_twist', default_value='False', description='Use carla_twist_to_control (Twist input) instead of carla_ackermann_control (AckermannDrive input) for actuation.'),
+        DeclareLaunchArgument('control_loop_rate', default_value='0.05', description='carla_ackermann_control loop rate in seconds.'),
+        DeclareLaunchArgument('input_msg_is_stamped', default_value='True', description='Whether the actuation input control messages are stamped.'),
+        DeclareLaunchArgument('teleoperate', default_value='False', description='When True, actuation subscribes to /ackermann_cmd_<role> (ackermann_mux output) instead of /drive.'),
 
         DeclareLaunchArgument('carla_waypoint_following_kp_lateral', default_value='0.9'),
         DeclareLaunchArgument('carla_waypoint_following_ki_lateral', default_value='0.0'),

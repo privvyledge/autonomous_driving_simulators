@@ -88,6 +88,10 @@ services:
       CARLA_FPS: "${CARLA_FPS:-20}"
       REMAP_TO_AUTOWARE: "${REMAP_TO_AUTOWARE:-True}"
       LAUNCH_BUILTIN_AGENT: "${LAUNCH_BUILTIN_AGENT:-True}"
+      # Run CARLA low-level actuation (carla_ackermann_control / carla_twist_to_control)
+      # here for the custom-controller path. Set True together with LAUNCH_BUILTIN_AGENT=False.
+      LAUNCH_ACTUATION: "${LAUNCH_ACTUATION:-False}"
+      PUBLISH_TWIST: "${PUBLISH_TWIST:-False}"
       OBJECTS_DEFINITION_FILE: "${OBJECTS_DEFINITION_FILE:-/config/obstacles.json}"
       SPAWN_POINT: "${SPAWN_POINT:-0.8798897862434387,-1.6753101348876953,4.0,-0.035736084,0.0263918489,-88.118721}"
       # True: bridge calls load_world(CARLA_TOWN). False: attach to the already-loaded
@@ -117,7 +121,7 @@ services:
         sudo ip link set lo multicast on || true;
         source /opt/ros/humble/setup.bash &&
         source /home/carla/carla_ros_ws/install/setup.bash &&
-        ros2 launch autonomous_driving_simulators simulation_bringup.launch.py host:=$${CARLA_HOST} port:=$${CARLA_PORT} town:=$${CARLA_TOWN} reload_map:=$${RELOAD_MAP} view:=$${VIEW} fixed_delta_seconds:=0.05 synchronous_mode:=True use_sim_time:=True remap_to_autoware:=$${REMAP_TO_AUTOWARE} launch_builtin_agent:=$${LAUNCH_BUILTIN_AGENT} objects_definition_file:=$${OBJECTS_DEFINITION_FILE} spawn_point:=$${SPAWN_POINT}
+        ros2 launch autonomous_driving_simulators simulation_bringup.launch.py host:=$${CARLA_HOST} port:=$${CARLA_PORT} town:=$${CARLA_TOWN} reload_map:=$${RELOAD_MAP} view:=$${VIEW} fixed_delta_seconds:=0.05 synchronous_mode:=True use_sim_time:=True remap_to_autoware:=$${REMAP_TO_AUTOWARE} launch_builtin_agent:=$${LAUNCH_BUILTIN_AGENT} launch_actuation:=$${LAUNCH_ACTUATION} publish_twist:=$${PUBLISH_TWIST} objects_definition_file:=$${OBJECTS_DEFINITION_FILE} spawn_point:=$${SPAWN_POINT}
       "
 
   # ── Autoware Full Stack ──────────────────────────────────────────────────
@@ -168,8 +172,6 @@ services:
     build:
       context: .
       dockerfile: docker/custom-nodes/Dockerfile
-      args:
-        CARLA_VERSION: "${CARLA_VERSION:-0.9.14}"
     image: ads/custom-nodes:humble
     container_name: custom-nodes
     restart: unless-stopped

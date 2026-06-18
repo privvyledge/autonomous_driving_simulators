@@ -5,15 +5,10 @@ ARG USERNAME=carla
 ARG USER_UID=1000
 ARG ROS_DISTRO=humble
 
-# CARLA client version — default 0.9.14 (matches the carla-server base and the
-# 0.9.14 dev server). Switch to 0.9.15 on another machine via the CARLA_VERSION
-# build arg / .env; the gezp wheel, the agents tag, and the bridge version-check
-# patch below all key off this single value.
-ARG CARLA_VERSION=0.9.14
-ARG UBUNTU_VERSION=22
-ARG PYTHON_MAJOR=3
-ARG PYTHON_MINOR=10
-ENV CARLA_VERSION=${CARLA_VERSION}
+# NOTE: This container is CARLA-package free. CARLA low-level actuation
+# (carla_ackermann_control / carla_twist_to_control) and the CARLA Python client
+# live in the carla-ros-bridge container; this one only builds the controllers,
+# SLAM, perception and teleop stack from custom.repos.
 
 ENV NVIDIA_DRIVER_CAPABILITIES=all
 ENV NVIDIA_VISIBLE_DEVICES=all
@@ -74,25 +69,8 @@ RUN python3 -m pip install --no-cache-dir \
     "transforms3d==0.4.2" "scipy==1.15.3" \
     networkx simple-pid
 
-# ── CARLA Python client ───────────────────────────────────────────────────────
-# Prebuilt cp310 wheel (gezp/carla_ros) for the configured CARLA_VERSION. Provides
-# the `carla` package AND a carla-<ver>.dist-info, so pkg_resources.get_distribution
-# ("carla") works — that is what carla_ros_bridge checks at startup. No host copy.
-RUN python3 -m pip install --no-cache-dir \
-    "https://github.com/gezp/carla_ros/releases/download/carla-${CARLA_VERSION}-ubuntu-${UBUNTU_VERSION}.04/carla-${CARLA_VERSION}-cp${PYTHON_MAJOR}${PYTHON_MINOR}-cp${PYTHON_MAJOR}${PYTHON_MINOR}-linux_x86_64.whl"
-
-# CARLA `agents` PythonAPI package (global route planner used by
-# carla_waypoint_publisher) — NOT bundled in the wheel. Sparse-checkout just that
-# directory at the matching tag and drop it beside the installed `carla` package.
-RUN git clone --depth 1 --filter=blob:none --sparse \
-        -b "${CARLA_VERSION}" https://github.com/carla-simulator/carla.git /tmp/carla_src \
-    && git -C /tmp/carla_src sparse-checkout set PythonAPI/carla/agents \
-    && SITE_PKGS="$(python3 -c 'import carla, os; print(os.path.dirname(os.path.dirname(os.path.realpath(carla.__file__))))')" \
-    && cp -r /tmp/carla_src/PythonAPI/carla/agents "${SITE_PKGS}/agents" \
-    && rm -rf /tmp/carla_src
-
 # Pin NumPy to the 1.x ABI — NumPy 2.x breaks cv_bridge (built against NumPy 1.x).
-# Last pip action wins, so this survives the carla wheel's own numpy requirement.
+# Keep this as the last pip action so it wins over the MPC toolchain's numpy req.
 RUN python3 -m pip install --no-cache-dir "numpy==1.26.4"
 
 # Acados
@@ -164,19 +142,13 @@ COPY custom.repos "${BUILD_HOME}/custom.repos"
 RUN cd "${BUILD_HOME}" \
     && vcs import src < custom.repos
 
-# Clone remaining control/sim packages not in custom.repos
+# Clone teleop/mux packages not in custom.repos. The CARLA ros-bridge is NOT
+# cloned here — carla_ackermann_control / carla_twist_to_control run in the
+# carla-ros-bridge container instead (see simulation_bringup.launch.py).
 RUN cd "${BUILD_HOME}/src" \
-    && git clone --recurse-submodules https://github.com/privvyledge/ros-bridge.git -b feature/add-humble-support \
     && git clone https://github.com/f1tenth/teleop_tools.git -b foxy-devel \
     && git clone https://github.com/f1tenth/ackermann_mux.git -b foxy-devel \
     && git clone https://github.com/ros-teleop/twist_mux.git -b rolling
-
-# Align carla_ros_bridge's expected client version with the installed client.
-# The bridge compares pkg_resources.get_distribution("carla") against a bundled
-# CARLA_VERSION file and aborts on mismatch; rewrite every such file to the
-# configured version so 0.9.14 (or 0.9.15) is accepted without a runtime patch.
-RUN find "${BUILD_HOME}/src" -name CARLA_VERSION -type f \
-        -exec sh -c 'printf "%s\n" "$1" > "$2"' _ "${CARLA_VERSION}" {} \;
 
 # Copy the local autonomous_driving_simulators package from the build context
 # instead of cloning it from GitHub, so local edits are baked into the image.
