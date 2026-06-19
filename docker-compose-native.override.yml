@@ -1,7 +1,8 @@
 # docker-compose-native.override.yml
 #
 # Native-Linux override for running carla-server + carla-ros-bridge with the
-# carla_manual_control pygame viewer and RViz, using a local X server.
+# carla_manual_control pygame viewer and RViz on a remote host reached over
+# SSH X11 forwarding (DISPLAY=localhost:NN.0, a TCP display).
 #
 # NOTE: docker compose only AUTO-merges a file named exactly
 # "docker-compose.override.yml". This file has a custom name, so either:
@@ -9,8 +10,20 @@
 #   (b) pass it explicitly every command, e.g.:
 #       docker compose -f docker-compose.yml -f docker-compose-native.override.yml up carla-server carla-ros-bridge custom-nodes -d
 #
-# Before starting, grant local X access on the host:
-#   xhost +local:docker
+# X11 over SSH forwarding (DISPLAY=localhost:NN.0):
+#   The forwarded display is a TCP socket, NOT /tmp/.X11-unix, and the
+#   container has no X auth cookie -> "No authorisation provided". Generate a
+#   wildcard (FamilyWild) cookie ON THE REMOTE HOST before `up`:
+#
+#     export XAUTH=/tmp/.docker.xauth
+#     rm -f "$XAUTH" && touch "$XAUTH"
+#     xauth nlist "$DISPLAY" | sed -e 's/^..../ffff/' | xauth -f "$XAUTH" nmerge -
+#     chmod 644 "$XAUTH"
+#
+#   The services run with network_mode: host, so the container reaches the
+#   forwarded X server at 127.0.0.1 directly. DISPLAY must keep its real value
+#   (do NOT force :0). For a local console X server (DISPLAY=:0) the cookie
+#   generation above still works; `xhost +local:docker` is an alternative.
 
 services:
 
@@ -22,14 +35,20 @@ services:
       RELOAD_MAP: "True"
       LAUNCH_BUILTIN_AGENT: "False"  # disable AD agent so it doesn't fight manual control
       VIEW: "True"                   # launch the carla_manual_control pygame window
-      DISPLAY: "${DISPLAY:-:0}"
+      DISPLAY: "${DISPLAY}"          # real forwarded display, e.g. localhost:12.0
+      XAUTHORITY: /tmp/.docker.xauth
+      XDG_RUNTIME_DIR: /tmp/runtime-carla
     volumes:
-      - /tmp/.X11-unix:/tmp/.X11-unix
+      - /tmp/.docker.xauth:/tmp/.docker.xauth:ro
+      - /tmp/.X11-unix:/tmp/.X11-unix   # harmless; used only for local :0 displays
 
   # ── Custom Nodes (run RViz from here, per CARLA_TESTS.md Test 2) ──────────
   custom-nodes:
     environment:
       CARLA_HOST: localhost
-      DISPLAY: "${DISPLAY:-:0}"
+      DISPLAY: "${DISPLAY}"
+      XAUTHORITY: /tmp/.docker.xauth
+      XDG_RUNTIME_DIR: /tmp/runtime-carla
     volumes:
+      - /tmp/.docker.xauth:/tmp/.docker.xauth:ro
       - /tmp/.X11-unix:/tmp/.X11-unix
