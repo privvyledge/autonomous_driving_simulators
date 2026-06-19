@@ -55,9 +55,11 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu, compute, video, display, utility]
+    # Port probe (not `import carla`): the carla-server image has no carla Python
+    # module on PYTHONPATH, so an import-based check is unhealthy forever. CARLA's
+    # RPC port 2000 == 0x7D0; a listening socket shows as ':07D0' in /proc/net/tcp.
     healthcheck:
-      test: ["CMD", "python3", "-c",
-             "import carla; c=carla.Client('localhost',2000); c.set_timeout(5.0); c.get_server_version()"]
+      test: ["CMD-SHELL", "grep -qi ':07D0 ' /proc/net/tcp || exit 1"]
       interval: 20s
       timeout: 10s
       retries: 10
