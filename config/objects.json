@@ -3,27 +3,33 @@
     [
         {
             "type": "sensor.pseudo.traffic_lights",
-            "id": "traffic_lights"
+            "id": "traffic_lights",
+            "attributes": {}
         },
         {
             "type": "sensor.pseudo.objects",
-            "id": "objects"
+            "id": "objects",
+            "attributes": {}
         },
         {
             "type": "sensor.pseudo.actor_list",
-            "id": "actor_list"
+            "id": "actor_list",
+            "attributes": {}
         },
         {
             "type": "sensor.pseudo.markers",
-            "id": "markers"
+            "id": "markers",
+            "attributes": {}
         },
         {
             "type": "sensor.pseudo.opendrive_map",
-            "id": "map"
+            "id": "map",
+            "attributes": {}
         },
         {
             "type": "vehicle.tesla.model3",
             "id": "ego_vehicle",
+            "attributes": {},
             "sensors":
             [
                 {
