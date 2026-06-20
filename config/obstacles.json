@@ -3,27 +3,33 @@
     [
         {
             "type": "sensor.pseudo.traffic_lights",
-            "id": "traffic_lights"
+            "id": "traffic_lights",
+            "attributes": {}
         },
         {
             "type": "sensor.pseudo.objects",
-            "id": "objects"
+            "id": "objects",
+            "attributes": {}
         },
         {
             "type": "sensor.pseudo.actor_list",
-            "id": "actor_list"
+            "id": "actor_list",
+            "attributes": {}
         },
         {
             "type": "sensor.pseudo.markers",
-            "id": "markers"
+            "id": "markers",
+            "attributes": {}
         },
         {
             "type": "sensor.pseudo.opendrive_map",
-            "id": "map"
+            "id": "map",
+            "attributes": {}
         },
         {
             "type": "vehicle.tesla.model3",
             "id": "ego_vehicle",
+            "attributes": {},
             "sensors":
             [
                 {
@@ -135,6 +141,7 @@
         {
             "type": "vehicle.audi.tt",
             "id": "car_1",
+            "attributes": {},
             "spawn_point": {"x": 1.0, "y": -40.2, "z": 2.0, "roll": 0.0, "pitch": 0.0, "yaw": -89.43235779},
             "sensors":
             [
@@ -163,6 +170,7 @@
         {
             "type": "walker.pedestrian.0001",
             "id": "pedestrian_1",
+            "attributes": {},
             "spawn_point": {"x": -2.1, "y": -321.2, "z": 2.0, "roll": 0.0, "pitch": 0.0, "yaw": 0.0},
             "sensors":
             [
@@ -191,6 +199,7 @@
         {
             "type": "vehicle.tesla.cybertruck",
             "id": "car_2",
+            "attributes": {},
             "spawn_point": {"x": 2.1, "y": -117.0, "z": 2.0, "roll": 0.0, "pitch": 0.0, "yaw": -89.43235779},
             "sensors":
             [
@@ -219,6 +228,7 @@
         {
             "type": "vehicle.carlamotors.firetruck",
             "id": "car_3",
+            "attributes": {},
             "spawn_point": {"x": -1.2, "y": -184.0, "z": 2.0, "roll": 0.0, "pitch": 0.0, "yaw": -89.43235779},
             "sensors":
             [
@@ -247,6 +257,7 @@
         {
             "type": "vehicle.bh.crossbike",
             "id": "bike_1",
+            "attributes": {},
             "spawn_point": {"x": 2.1, "y": -184.0, "z": 2.0, "roll": 0.0, "pitch": 0.0, "yaw": -89.43235779},
             "sensors":
             [
@@ -275,6 +286,7 @@
         {
             "type": "vehicle.harley-davidson.low_rider",
             "id": "bike_2",
+            "attributes": {},
             "spawn_point": {"x": -1.2, "y": -250.0, "z": 2.0, "roll": 0.0, "pitch": 0.0, "yaw": -89.43235779},
             "sensors":
             [

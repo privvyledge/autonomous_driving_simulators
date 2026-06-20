@@ -88,7 +88,7 @@ services:
       CARLA_PORT: "${CARLA_PORT:-2000}"
       CARLA_TOWN: "${CARLA_TOWN:-Town01}"
       CARLA_FPS: "${CARLA_FPS:-20}"
-      REMAP_TO_AUTOWARE: "${REMAP_TO_AUTOWARE:-True}"
+      REMAP_TO_AUTOWARE: "${REMAP_TO_AUTOWARE:-False}"
       LAUNCH_BUILTIN_AGENT: "${LAUNCH_BUILTIN_AGENT:-True}"
       # Run CARLA low-level actuation (carla_ackermann_control / carla_twist_to_control)
       # here for the custom-controller path. Set True together with LAUNCH_BUILTIN_AGENT=False.

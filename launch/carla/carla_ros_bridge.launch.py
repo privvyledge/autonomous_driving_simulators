@@ -95,7 +95,7 @@ def generate_launch_description():
         ),
         launch.actions.DeclareLaunchArgument(
             name='remap_to_autoware',
-            default_value='True',
+            default_value='False',
             description=('Whether to remap the raw CARLA sensor topics to '
                          'Autoware sensing topics. Set to False to publish the '
                          'raw /carla/<role_name>/* topics unchanged.')
