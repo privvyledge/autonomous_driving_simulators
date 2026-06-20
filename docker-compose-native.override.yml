@@ -40,10 +40,10 @@ services:
   carla-ros-bridge:
     environment:
       CARLA_HOST: localhost          # carla-server is a local container
-      CARLA_TOWN: Town01             # light map; reload survives
-      RELOAD_MAP: "True"
-      LAUNCH_BUILTIN_AGENT: "False"  # disable AD agent so it doesn't fight manual control
-      VIEW: "True"                   # launch the carla_manual_control pygame window
+      CARLA_TOWN: "${CARLA_TOWN:-Town01}"                     # light map; reload survives
+      RELOAD_MAP: "${RELOAD_MAP:-True}"
+      LAUNCH_BUILTIN_AGENT: "${LAUNCH_BUILTIN_AGENT:-False}"  # default off so it doesn't fight manual control; LAUNCH_BUILTIN_AGENT=True to enable
+      VIEW: "${VIEW:-True}"                                   # default on (carla_manual_control pygame viewer); VIEW=False to disable
       DISPLAY: "${DISPLAY}"          # real forwarded display, e.g. localhost:12.0
       XAUTHORITY: /tmp/.docker.xauth
       XDG_RUNTIME_DIR: /tmp/runtime-carla
