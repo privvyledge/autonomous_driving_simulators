@@ -12,18 +12,27 @@
 #
 # X11 over SSH forwarding (DISPLAY=localhost:NN.0):
 #   The forwarded display is a TCP socket, NOT /tmp/.X11-unix, and the
-#   container has no X auth cookie -> "No authorisation provided". Generate a
-#   wildcard (FamilyWild) cookie ON THE REMOTE HOST before `up`:
+#   container has no X auth cookie -> "No authorisation provided". The container
+#   needs a wildcard (FamilyWild) cookie at /tmp/.docker.xauth. Use the helper,
+#   which generates the cookie AND (re)creates the services in the right order:
 #
-#     export XAUTH=/tmp/.docker.xauth
-#     rm -f "$XAUTH" && touch "$XAUTH"
-#     xauth nlist "$DISPLAY" | sed -e 's/^..../ffff/' | xauth -f "$XAUTH" nmerge -
-#     chmod 644 "$XAUTH"
+#     ./scripts/setup_x11_forwarding.sh --up
+#
+#   Two gotchas that script handles (and that bite if you do it by hand):
+#     1. /tmp/.docker.xauth MUST already exist as a FILE before `up`; if it does
+#        not, Docker bind-mounts it as an empty directory and no cookie is read.
+#     2. SSH forwarding assigns a NEW display number each login (:10, :12, ...),
+#        so a container from a previous session points at a dead display -- the
+#        services must be recreated each session. Regenerate the cookie BEFORE
+#        recreating: Docker mounts the file by inode, so edits to an already-
+#        mounted cookie are not seen by a running container.
 #
 #   The services run with network_mode: host, so the container reaches the
-#   forwarded X server at 127.0.0.1 directly. DISPLAY must keep its real value
-#   (do NOT force :0). For a local console X server (DISPLAY=:0) the cookie
-#   generation above still works; `xhost +local:docker` is an alternative.
+#   forwarded X server at 127.0.0.1 directly. DISPLAY keeps its real value (do
+#   NOT force :0); the services inherit it, so run rviz2 via `exec` WITHOUT
+#   re-passing `-e DISPLAY` (that would override it with another session's
+#   stale display). For a local console X server (DISPLAY=:0) the same helper
+#   works; `xhost +local:docker` is an alternative.
 
 services:
 
