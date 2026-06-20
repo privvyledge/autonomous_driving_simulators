@@ -70,7 +70,8 @@ RUN python3 -m pip install --no-cache-dir \
     networkx simple-pid
 
 # Pin NumPy to the 1.x ABI — NumPy 2.x breaks cv_bridge (built against NumPy 1.x).
-# Keep this as the last pip action so it wins over the MPC toolchain's numpy req.
+# NOTE: the ML toolchain below re-pins NumPy again as the final pip action, since
+# open3d/ultralytics/torch can drag in NumPy 2.x after this point.
 RUN python3 -m pip install --no-cache-dir "numpy==1.26.4"
 
 # Acados
@@ -110,6 +111,34 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
 
 ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${ACADOS_ROOT}/lib"
 
+# ── Perception / ML toolchain (Open3D GPU, YOLO, TensorRT) ───────────────────
+# Runtime deps for autodriver_image_object_detection (YOLO) and
+# autodriver_pointcloud_object_detection (Open3D clustering). None are declared
+# in those packages' package.xml, so rosdep won't install them — they live here.
+#
+# torch/torchvision: CUDA 12.1 wheels (run fine on the 12.2 base); installed
+#   before ultralytics so it doesn't pull a non-deterministic/CPU build.
+# open3d: the default x86_64 Linux wheel ships WITH CUDA (open3d-cpu is CPU-only),
+#   so plain `open3d` is the latest release with GPU support — no source build.
+# tensorrt + onnx + onnxslim: the .pt -> .onnx -> .engine export/load path.
+#
+# OpenCV: ultralytics pulls the GUI `opencv-python` (>=4.6). We swap it for
+# `opencv-python-headless` so there is exactly ONE pip cv2 (no namespace clash
+# with the apt python3-opencv that cv_bridge links) and ultralytics' runtime
+# check_requirements stays satisfied (cv2 -> opencv-python-headless) instead of
+# auto-installing the GUI build over the network in this headless container.
+RUN python3 -m pip install --no-cache-dir \
+        --index-url https://download.pytorch.org/whl/cu121 \
+        torch torchvision \
+    && python3 -m pip install --no-cache-dir \
+        ultralytics open3d tensorrt onnx onnxslim \
+    && python3 -m pip uninstall -y opencv-python || true \
+    && python3 -m pip install --no-cache-dir "opencv-python-headless==4.9.0.80"
+
+# Re-pin NumPy to the 1.x ABI as the FINAL pip action — open3d/ultralytics/torch
+# can pull NumPy 2.x, which breaks cv_bridge (built against NumPy 1.x).
+RUN python3 -m pip install --no-cache-dir "numpy==1.26.4"
+
 # ── ROS2 system deps ─────────────────────────────────────────────────────────
 RUN sudo apt-get update && sudo apt-get install -y --no-install-recommends \
     "ros-${ROS_DISTRO}-tf2-tools" \
@@ -117,6 +146,10 @@ RUN sudo apt-get update && sudo apt-get install -y --no-install-recommends \
     "ros-${ROS_DISTRO}-rqt-tf-tree" \
     "ros-${ROS_DISTRO}-tf2-geometry-msgs" \
     "ros-${ROS_DISTRO}-derived-object-msgs" \
+    "ros-${ROS_DISTRO}-vision-msgs" \
+    "ros-${ROS_DISTRO}-cv-bridge" \
+    "ros-${ROS_DISTRO}-image-geometry" \
+    "ros-${ROS_DISTRO}-message-filters" \
     "ros-${ROS_DISTRO}-ackermann-msgs" \
     "ros-${ROS_DISTRO}-rmw-cyclonedds-cpp" \
     "ros-${ROS_DISTRO}-topic-tools" \
