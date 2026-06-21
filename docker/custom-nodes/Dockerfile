@@ -125,7 +125,10 @@ ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${ACADOS_ROOT}/lib"
 #   before ultralytics so it doesn't pull a non-deterministic/CPU build.
 # open3d: the default x86_64 Linux wheel ships WITH CUDA (open3d-cpu is CPU-only),
 #   so plain `open3d` is the latest release with GPU support — no source build.
-# tensorrt + onnx + onnxslim: the .pt -> .onnx -> .engine export/load path.
+# onnxruntime-gpu + onnx + onnxslim: the .pt -> .onnx leg (and runtime check that
+#   ultralytics would otherwise AutoUpdate-install 300MB into ephemeral ~/.local).
+#   tensorrt (the .onnx -> .engine builder) is installed SEPARATELY below, as root
+#   and pinned to the CUDA-12 line — see that block for why.
 #
 # OpenCV: ultralytics pulls the GUI `opencv-python` (>=4.6). We swap it for
 # `opencv-python-headless` so there is exactly ONE pip cv2 (no namespace clash
@@ -136,9 +139,20 @@ RUN python3 -m pip install --no-cache-dir \
         --index-url https://download.pytorch.org/whl/cu121 \
         torch torchvision \
     && python3 -m pip install --no-cache-dir \
-        ultralytics open3d tensorrt onnx onnxslim \
+        ultralytics open3d onnxruntime-gpu onnx onnxslim \
     && python3 -m pip uninstall -y opencv-python || true \
     && python3 -m pip install --no-cache-dir "opencv-python-headless==4.9.0.80"
+
+# TensorRT (.onnx -> .engine builder) — pinned to the CUDA-12 line.
+# The unpinned default pulls TRT 11.x (CUDA-13), whose builder fails CUDA init on a
+# 12.x driver: `createInferBuilder ... CUDA initialization failure with error: 35`
+# (cudaErrorInsufficientDriver) -> `pybind11::init(): factory function returned nullptr`.
+# Installed as ROOT because the `tensorrt` sdist shells out a NESTED `pip install` of
+# its cu12 libs/bindings WITHOUT --user, so it needs write access to global
+# site-packages (as the non-root carla user that nested install dies Permission denied).
+USER root
+RUN python3 -m pip install --no-cache-dir "tensorrt==10.7.0"
+USER ${USERNAME}
 
 # Re-pin NumPy to the 1.x ABI as the FINAL pip action — open3d/ultralytics/torch
 # can pull NumPy 2.x, which breaks cv_bridge (built against NumPy 1.x).
