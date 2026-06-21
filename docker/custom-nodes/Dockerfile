@@ -60,6 +60,11 @@ RUN rosdep init || true
 USER ${USERNAME}
 WORKDIR /home/${USERNAME}
 
+# pip installs as the non-root carla user (no venv) default to a USER install, so
+# console scripts (yolo, etc.) land in ~/.local/bin. Put it on PATH so the CLIs
+# resolve — without this, `import ultralytics` works but `yolo …` is not found.
+ENV PATH=/home/${USERNAME}/.local/bin:$PATH
+
 # Setuptools constraint
 RUN python3 -m pip install -U pip "setuptools<71.0.0" wheel
 

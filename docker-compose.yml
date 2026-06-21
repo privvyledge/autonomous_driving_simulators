@@ -142,7 +142,7 @@ services:
       <<: *ros-env
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: all
-      MPC_MODEL_PATH: "${MPC_MODEL_PATH:-/home/carla/sdks/mpc/carla}"
+      MPC_MODEL_PATH: "${MPC_MODEL_PATH:-/home/carla/data/mpc/carla}"
       WAYPOINTS_CSV: "${WAYPOINTS_CSV:-/waypoints/waypoints.csv}"
       VEHICLE_ID: "${VEHICLE_ID:-default}"
     volumes:
@@ -150,6 +150,8 @@ services:
       - ./launch:/launch:ro
       - ./maps:/maps:ro
       - ./data/waypoints:/waypoints:ro
+      # Writable host-backed dir: compiled MPC model (MPC_MODEL_PATH), recordings, etc.
+      - ./data:/home/carla/data:rw
       - autoware-data:/home/carla/autoware_data
     deploy:
       resources:
@@ -185,13 +187,19 @@ services:
       <<: *ros-env
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: all
-      MPC_MODEL_PATH: "${MPC_MODEL_PATH:-/home/carla/sdks/mpc/carla}"
+      MPC_MODEL_PATH: "${MPC_MODEL_PATH:-/home/carla/data/mpc/carla}"
       WAYPOINTS_CSV: "${WAYPOINTS_CSV:-/waypoints/waypoints.csv}"
+      # Persist Ultralytics weights/config on the host (./data/models) instead of
+      # the ephemeral container layer; also silences the "config dir not writable" warning.
+      YOLO_CONFIG_DIR: "${YOLO_CONFIG_DIR:-/home/carla/data/models/ultralytics}"
     volumes:
       - ./config:/config:ro
       - ./launch:/launch:ro
       - ./maps:/maps:ro
       - ./data/waypoints:/waypoints:ro
+      # Writable host-backed scratch/output dir: YOLO .pt/.onnx/.engine models,
+      # MPC build artifacts, recorded waypoints, videos, etc. persist across recreates.
+      - ./data:/home/carla/data:rw
       - ./custom.repos:/home/carla/carla_ros_ws/custom.repos:ro
     deploy:
       resources:
