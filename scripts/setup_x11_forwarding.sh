@@ -36,12 +36,16 @@ fi
 touch "$XAUTH"
 chmod 644 "$XAUTH"
 
-# 2. Write wildcard (FamilyWild) cookies. The ffff rewrite wildcards only the
-#    HOSTNAME, not the display number, so we merge ALL of the host's cookies.
-#    That way the cookie file covers every active SSH session's display number
-#    (:10, :12, :14, ...), not just the one this script runs in — useful when
-#    rviz2 is launched from a different terminal than carla_manual_control.
-xauth nlist | sed -e 's/^..../ffff/' | xauth -f "$XAUTH" nmerge -
+# 2. Write a wildcard (FamilyWild) cookie for THIS session's display only.
+#    The ffff rewrite wildcards the HOSTNAME but keeps the display number, so
+#    merging ALL host cookies is unsafe: stale cookies from a previous hostname
+#    (e.g. a machine renamed Velox-169392 -> velox1) collapse to the same
+#    "ffff:NN" key with a DIFFERENT cookie value. A localhost:NN connection then
+#    matches whichever wild entry comes FIRST in the file, which can be the stale
+#    one -> "MoTTY X11 proxy: Authorisation not recognised". Scoping to $DISPLAY
+#    pulls only the live entry for the current display. Re-run this script after
+#    switching SSH sessions (the display number changes each login).
+xauth nlist "$DISPLAY" | sed -e 's/^..../ffff/' | xauth -f "$XAUTH" nmerge -
 
 if ! xauth -f "$XAUTH" list | grep -q .; then
   echo "ERROR: no cookie written for DISPLAY=$DISPLAY. Is X11 forwarding active?" >&2
