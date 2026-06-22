@@ -89,6 +89,8 @@ services:
       CARLA_TOWN: "${CARLA_TOWN:-Town01}"
       CARLA_FPS: "${CARLA_FPS:-20}"
       REMAP_TO_AUTOWARE: "${REMAP_TO_AUTOWARE:-False}"
+      # CARLA's global route planner (carla_waypoint_publisher). Set False to use your own planner.
+      START_GLOBAL_PLANNER_CARLA: "${START_GLOBAL_PLANNER_CARLA:-True}"
       LAUNCH_BUILTIN_AGENT: "${LAUNCH_BUILTIN_AGENT:-True}"
       # Run CARLA low-level actuation (carla_ackermann_control / carla_twist_to_control)
       # here for the custom-controller path. Set True together with LAUNCH_BUILTIN_AGENT=False.
@@ -123,7 +125,7 @@ services:
         sudo ip link set lo multicast on || true;
         source /opt/ros/humble/setup.bash &&
         source /home/carla/carla_ros_ws/install/setup.bash &&
-        ros2 launch autonomous_driving_simulators simulation_bringup.launch.py host:=$${CARLA_HOST} port:=$${CARLA_PORT} town:=$${CARLA_TOWN} reload_map:=$${RELOAD_MAP} view:=$${VIEW} fixed_delta_seconds:=0.05 synchronous_mode:=True use_sim_time:=True remap_to_autoware:=$${REMAP_TO_AUTOWARE} launch_builtin_agent:=$${LAUNCH_BUILTIN_AGENT} launch_actuation:=$${LAUNCH_ACTUATION} publish_twist:=$${PUBLISH_TWIST} objects_definition_file:=$${OBJECTS_DEFINITION_FILE} spawn_point:=$${SPAWN_POINT}
+        ros2 launch autonomous_driving_simulators simulation_bringup.launch.py host:=$${CARLA_HOST} port:=$${CARLA_PORT} town:=$${CARLA_TOWN} reload_map:=$${RELOAD_MAP} view:=$${VIEW} fixed_delta_seconds:=0.05 synchronous_mode:=True use_sim_time:=True remap_to_autoware:=$${REMAP_TO_AUTOWARE} start_global_planner_carla:=$${START_GLOBAL_PLANNER_CARLA} launch_builtin_agent:=$${LAUNCH_BUILTIN_AGENT} launch_actuation:=$${LAUNCH_ACTUATION} publish_twist:=$${PUBLISH_TWIST} objects_definition_file:=$${OBJECTS_DEFINITION_FILE} spawn_point:=$${SPAWN_POINT}
       "
 
   # ── Autoware Full Stack ──────────────────────────────────────────────────
