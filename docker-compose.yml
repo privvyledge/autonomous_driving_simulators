@@ -145,7 +145,7 @@ services:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: all
       MPC_MODEL_PATH: "${MPC_MODEL_PATH:-/home/carla/data/mpc/carla}"
-      WAYPOINTS_CSV: "${WAYPOINTS_CSV:-/waypoints/waypoints.csv}"
+      WAYPOINTS_CSV: "${WAYPOINTS_CSV:-/home/carla/data/waypoints/waypoints.csv}"
       VEHICLE_ID: "${VEHICLE_ID:-default}"
     volumes:
       - ./config:/config:ro
@@ -190,7 +190,7 @@ services:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: all
       MPC_MODEL_PATH: "${MPC_MODEL_PATH:-/home/carla/data/mpc/carla}"
-      WAYPOINTS_CSV: "${WAYPOINTS_CSV:-/waypoints/waypoints.csv}"
+      WAYPOINTS_CSV: "${WAYPOINTS_CSV:-/home/carla/data/waypoints/waypoints.csv}"
       # Persist Ultralytics weights/config on the host (./data/models) instead of
       # the ephemeral container layer; also silences the "config dir not writable" warning.
       YOLO_CONFIG_DIR: "${YOLO_CONFIG_DIR:-/home/carla/data/models/ultralytics}"
