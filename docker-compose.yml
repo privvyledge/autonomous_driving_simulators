@@ -214,6 +214,7 @@ services:
       /bin/bash -c "
         sudo sysctl -w net.core.rmem_max=2147483647 || true;
         sudo ip link set lo multicast on || true;
+        sudo chown -R carla:carla /home/carla/data || true;
         source /opt/ros/humble/setup.bash &&
         source /home/carla/carla_ros_ws/install/setup.bash &&
         sleep infinity
