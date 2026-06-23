@@ -185,6 +185,24 @@ RUN sudo apt-get update && sudo apt-get install -y --no-install-recommends \
     libpcl-dev \
     && sudo rm -rf /var/lib/apt/lists/*
 
+# ── Visualization and debug tools ────────────────────────────────────────────
+RUN sudo apt-get update && sudo apt-get install -y --no-install-recommends \
+    # 3D visualizer
+    "ros-${ROS_DISTRO}-rviz2" \
+    # bag recording/playback + MCAP storage plugin
+    "ros-${ROS_DISTRO}-rosbag2" \
+    "ros-${ROS_DISTRO}-rosbag2-storage-mcap" \
+    # rqt plugin suite: graph, plot, image-view, console, topic, service-caller
+    "ros-${ROS_DISTRO}-rqt-common-plugins" \
+    "ros-${ROS_DISTRO}-rqt-image-view" \
+    # time-series plotter
+    "ros-${ROS_DISTRO}-plotjuggler-ros" \
+    # compressed/theora image transport (for camera visualization over the network)
+    "ros-${ROS_DISTRO}-image-transport-plugins" \
+    # keyboard teleoperation fallback
+    "ros-${ROS_DISTRO}-teleop-twist-keyboard" \
+    && sudo rm -rf /var/lib/apt/lists/*
+
 # ── ROS2 workspace ───────────────────────────────────────────────────────────
 ENV BUILD_HOME=/home/${USERNAME}/carla_ros_ws
 RUN mkdir -p "${BUILD_HOME}/src"
