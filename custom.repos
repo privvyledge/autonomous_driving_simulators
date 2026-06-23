@@ -22,7 +22,7 @@ repositories:
   trajectory_following_ros2:
     type: git
     url: https://github.com/privvyledge/trajectory_following_ros2.git
-    version: master
+    version: refactor/unify-backends
 #  f1tenth_autoware_launch_py:
 #    type: git
 #    url: https://github.com/privvyledge/f1tenth_autoware_launch_py.git

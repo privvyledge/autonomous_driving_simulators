@@ -26,6 +26,55 @@ if [ -z "${DISPLAY:-}" ]; then
   exit 1
 fi
 
+# 1b. Stale-display check (informational, never fatal). With X11UseLocalhost=yes
+#     (the sshd default) each forwarded session's display lives on a TCP socket at
+#     127.0.0.1:(6000+N) -- NOT in /tmp/.X11-unix, which holds only LOCAL displays
+#     like :0/:1. sshd hands out the lowest free N >= X11DisplayOffset (default 10),
+#     so if an earlier SSH session is still alive the number CLIMBS (:10 -> :11 ...),
+#     which is why $DISPLAY seems to "change every run". Report what holds the lower
+#     numbers so stale sessions can be reaped.
+check_stale_x11() {
+  local host="${DISPLAY%%:*}" rest="${DISPLAY#*:}" dnum offset=10 cfg busy
+  dnum="${rest%%.*}"
+  cfg=$(grep -sE '^[[:space:]]*X11DisplayOffset[[:space:]]+[0-9]+' /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}' | tail -1 || true)
+  [ -n "$cfg" ] && offset="$cfg"
+
+  # Local console display (e.g. :0/:1): only unix sockets are relevant.
+  if [ -z "$host" ] || [ "$host" = "unix" ]; then
+    echo "Local console display ($DISPLAY); X11 sockets in /tmp/.X11-unix:"
+    ls -1 /tmp/.X11-unix/ 2>/dev/null | sed 's/^/  /' || true
+    return 0
+  fi
+
+  # Forwarded (TCP) display: enumerate the active X11 forward ports.
+  if ! command -v ss >/dev/null 2>&1; then
+    echo "(install iproute2 'ss' to enumerate forwarded X11 displays)"
+    return 0
+  fi
+  busy=$(ss -ltnH 2>/dev/null | grep -oE '127\.0\.0\.1:60[0-9][0-9]' | grep -oE '60[0-9][0-9]$' | sort -un || true)
+  if [ -n "$busy" ]; then
+    echo "Active X11 forward displays (TCP 6000+N):"
+    while read -r p; do
+      [ -z "$p" ] && continue
+      if [ "$((p - 6000))" = "$dnum" ]; then
+        printf '  :%s  (port %s)  <- current $DISPLAY\n' "$((p - 6000))" "$p"
+      else
+        printf '  :%s  (port %s)  <- held by another SSH session\n' "$((p - 6000))" "$p"
+      fi
+    done <<< "$busy"
+  fi
+  if [ "${dnum:-0}" -gt "$offset" ] 2>/dev/null; then
+    echo "WARNING: \$DISPLAY has climbed to :$dnum (sshd offset $offset)." >&2
+    echo "         Lower numbers are held by earlier SSH sessions that never released," >&2
+    echo "         so each new login increments. Identify and close the stale ones:" >&2
+    echo "           who                      # lingering pts/* logins" >&2
+    echo "           ss -ltnp | grep ':60'    # which sshd PID owns each forward port" >&2
+    echo "         Logging those sessions out frees the lower display numbers." >&2
+  fi
+  return 0
+}
+check_stale_x11
+
 # 1. Ensure the cookie path is a fresh, world-readable FILE (not a directory
 #    that a previous `docker compose up` may have auto-created).
 if [ -d "$XAUTH" ]; then

@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Colcon / ROS 2 build artifacts
+build/
+install/
+log/
+
+# IDE
+.idea/
+
+# Editor backups
+*~
+*.swp
+
+# Local environment / secrets (.env.example is committed)
+.env
+
+# Local compose overrides (docker-compose.override.yml.example is committed)
+docker-compose.override.yml
