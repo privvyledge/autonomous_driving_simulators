@@ -1,12 +1,11 @@
 import os
 import sys
 from pathlib import Path
-from scipy.spatial.transform import Rotation
 import launch
 from launch import LaunchDescription, LaunchContext
 from launch_ros.actions import Node, SetRemap, PushRosNamespace
 from launch.substitutions import LaunchConfiguration
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, ExecuteProcess, TimerAction, GroupAction, OpaqueFunction
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, ExecuteProcess, GroupAction, OpaqueFunction
 from launch.conditions import IfCondition, UnlessCondition, LaunchConfigurationEquals, LaunchConfigurationNotEquals
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from ament_index_python.packages import get_package_share_directory
@@ -57,7 +56,6 @@ def launch_setup(context, *args, **kwargs):
     # Resolve context strings
     role_name_string = role_name.perform(context)
     target_speed_string = target_speed.perform(context)
-    goal_pose_string = goal_pose.perform(context)
 
     # Resolve the town to pass to the bridge. When reload_map is False, query the
     # currently-loaded map and pass its FULL name so carla_ros_bridge skips
@@ -152,81 +150,32 @@ def launch_setup(context, *args, **kwargs):
         ]
     )
 
-    # 5. Built-in AD agent (local_planner/ad_agent) group
-    carla_ad_agent_launch = Node(
-        package='carla_ad_agent',
-        executable='ad_agent',
-        name=['carla_ad_agent_', role_name],
-        output='log',
-        parameters=[
-            {
-                'role_name': role_name,
-                'avoid_risk': avoid_risk
-            }
-        ]
-    )
-
-    carla_waypoint_following_node = Node(
-        package='carla_ad_agent',
-        executable='local_planner',
-        name=['carla_local_planner_', role_name],
-        output='screen',
-        parameters=[
-            {
-                'use_sim_time': True,
-                'role_name': role_name,
-                'Kp_lateral': carla_waypoint_following_kp_lateral,
-                'Ki_lateral': carla_waypoint_following_ki_lateral,
-                'Kd_lateral': carla_waypoint_following_kd_lateral,
-                'Kp_longitudinal': carla_waypoint_following_kp_longitudinal,
-                'Ki_longitudinal': carla_waypoint_following_ki_longitudinal,
-                'Kd_longitudinal': carla_waypoint_following_kd_longitudinal,
-                'control_time_step': fixed_delta_seconds,
-            }
-        ]
-    )
-
-    if goal_pose_string.lower() != 'none':
-        goal_pose_list = goal_pose_string.split(sep=',')
-        goal_pose_orientation_quat = Rotation.from_euler('zyx', goal_pose_list[3:], degrees=True).as_quat().tolist()
-        goal_pose_msg_string = (("{'header': {'stamp': 'now', 'frame_id': 'map'}, "
-                                 "'pose': {position: {x: ") + str(goal_pose_list[0]) + ", y: " + str(goal_pose_list[1]) +
-                                ", z: " + str(goal_pose_list[2]) + "}, orientation: {x: " + str(
-                            goal_pose_orientation_quat[0]) +
-                                ", y: " + str(goal_pose_orientation_quat[1]) + ", z: " + str(
-                            goal_pose_orientation_quat[2]) +
-                                ", w: " + str(goal_pose_orientation_quat[3]) + "}}}")
-    else:
-        goal_pose_msg_string = ""
-
-    goal_pose_publisher_node = TimerAction(
-        period=10.0,
-        actions=[
-            ExecuteProcess(
-                condition=LaunchConfigurationNotEquals('goal_pose', 'none'),
-                output="log",
-                cmd=[
-                    "ros2", "topic", "pub", f"/carla/{role_name_string}/goal",
-                    "geometry_msgs/msg/PoseStamped", goal_pose_msg_string, "--once",
-                ],
-                name='goal_pose_publisher'
+    # 5. Built-in AD agent (ad_agent + local_planner + goal publisher/relay).
+    #    Extracted to built_in_agent.launch.py so it can ALSO be launched
+    #    standalone AFTER the recorder is confirmed up (decoupled start), which
+    #    guarantees the recorder captures the path from the first motion. Gated
+    #    here by launch_builtin_agent for the bundled (one-shot) behaviour.
+    built_in_agent_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(
+                get_package_share_directory('autonomous_driving_simulators'),
+                'launch', 'carla', 'built_in_agent.launch.py'
             )
-        ]
-    )
-
-    carla_goal_pose_relay_node = ExecuteProcess(
-        output="log",
-        cmd=["ros2", "run", "topic_tools", "relay", "/goal_pose", f"/carla/{role_name_string}/goal"]
-    )
-
-    built_in_driver_group = GroupAction(
+        ),
         condition=IfCondition(launch_builtin_agent),
-        actions=[
-            carla_ad_agent_launch,
-            carla_waypoint_following_node,
-            goal_pose_publisher_node,
-            carla_goal_pose_relay_node
-        ]
+        launch_arguments={
+            'use_sim_time': use_sim_time,
+            'role_name': role_name,
+            'avoid_risk': avoid_risk,
+            'goal_pose': goal_pose,
+            'fixed_delta_seconds': fixed_delta_seconds,
+            'carla_waypoint_following_kp_lateral': carla_waypoint_following_kp_lateral,
+            'carla_waypoint_following_ki_lateral': carla_waypoint_following_ki_lateral,
+            'carla_waypoint_following_kd_lateral': carla_waypoint_following_kd_lateral,
+            'carla_waypoint_following_kp_longitudinal': carla_waypoint_following_kp_longitudinal,
+            'carla_waypoint_following_ki_longitudinal': carla_waypoint_following_ki_longitudinal,
+            'carla_waypoint_following_kd_longitudinal': carla_waypoint_following_kd_longitudinal,
+        }.items()
     )
 
     # 6. Optional Autoware Bridge
@@ -319,7 +268,7 @@ def launch_setup(context, *args, **kwargs):
         carla_spawn_objects_launch,
         carla_target_speed_publisher_node,
         carla_waypoint_publisher_node,
-        built_in_driver_group,
+        built_in_agent_launch,
         carla_autoware_bridge_launch,
         carla_manual_control_launch,
         actuation_group

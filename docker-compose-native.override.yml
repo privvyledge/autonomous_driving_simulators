@@ -33,6 +33,21 @@
 #   re-passing `-e DISPLAY` (that would override it with another session's
 #   stale display). For a local console X server (DISPLAY=:0) the same helper
 #   works; `xhost +local:docker` is an alternative.
+#
+# Deterministic waypoint recording (built-in agent, no manual driving):
+#   LAUNCH_BUILTIN_AGENT defaults to False here, so the ego spawns STATIONARY.
+#   This enables a "arm recorder, THEN release the car" workflow so the CSV
+#   captures the path from the first motion — no pygame `b`-key timing needed:
+#     1. Bring up stationary:
+#          LAUNCH_BUILTIN_AGENT=False START_GLOBAL_PLANNER_CARLA=True \
+#            ./scripts/setup_x11_forwarding.sh --up
+#     2. Arm + confirm the recorder in custom-nodes
+#          (ros2 launch ... custom_nodes.launch.py record_waypoints:=True).
+#     3. Release the ego LAST, from the bridge container:
+#          ros2 launch autonomous_driving_simulators carla/built_in_agent.launch.py
+#   built_in_agent.launch.py is a NEW launch file -> `docker compose build
+#   carla-ros-bridge` once, or use the direct path /launch/carla/built_in_agent.launch.py.
+#   Full recipe: CARLA_TESTS.md "Test 5".
 
 services:
 
