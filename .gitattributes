@@ -1,0 +1,12 @@
+# Store every text file with LF in the repository, regardless of the platform
+# it was edited on. Without this, Windows editors and OneDrive sync re-introduce
+# CRLF and whole files show as modified with no content change (the churn that
+# commit 75f086e cleaned up once and that came straight back).
+* text=auto
+
+# These are executed inside Linux containers, where a CRLF shebang fails with
+# "bad interpreter: /bin/sh^M: no such file or directory". Force LF in the
+# working tree too, not just in the repository.
+*.sh        text eol=lf
+*.bash      text eol=lf
+Dockerfile  text eol=lf
