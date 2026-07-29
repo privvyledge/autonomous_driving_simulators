@@ -1,0 +1,13 @@
+# Keep the Docker build context small and deterministic.
+# The image builds only need the ROS package sources, custom.repos and scripts/.
+# Excluding .claude/ also prevents colcon from discovering the duplicate
+# autonomous_driving_simulators package that lives in .claude/worktrees/.
+.git/
+.claude/
+.wolf/
+.idea/
+graphify-out/
+**/__pycache__/
+*.pyc
+*~
+.env
