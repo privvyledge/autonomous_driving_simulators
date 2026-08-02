@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # CARLA ROS2 Bridge
 # Includes: carla_ros_bridge, carla_spawn_objects,
 #           carla_waypoint_publisher, carla_ackermann_control
@@ -34,7 +35,7 @@ RUN rm -f /etc/apt/sources.list.d/ros2*.list \
     && rm /tmp/ros2-apt-source.deb
 
 RUN apt-get update && apt-get install -yq --no-install-recommends \
-    sudo tzdata wget unzip git curl python3-pip python3-wheel \
+    sudo tzdata wget unzip git curl python3-pip python3-wheel ccache \
     && ln -fns /usr/share/zoneinfo/${TZ} /etc/localtime \
     && dpkg-reconfigure -f noninteractive tzdata \
     && rm -rf /var/lib/apt/lists/*
@@ -118,6 +119,12 @@ COPY --chown=${USERNAME}:${USERNAME} autonomous_driving_simulators "${ADS_SRC}/a
 
 ENV PYTHONWARNINGS="ignore:::setuptools.command.install,ignore:::setuptools.command.easy_install,ignore:::pkg_resources,ignore:::setuptools.command.develop"
 
+# ccache: the colcon step below mounts a BuildKit cache at CCACHE_DIR, so object
+# files survive across `docker compose build` runs. CMAKE_*_COMPILER_LAUNCHER is
+# what actually routes compiles through ccache (installing it is not enough).
+ENV CCACHE_DIR=/home/${USERNAME}/.ccache
+ENV CCACHE_MAXSIZE=5G
+
 RUN cd "${BUILD_HOME}" \
     && sudo apt-get update \
     && source /opt/ros/${ROS_DISTRO}/setup.bash \
@@ -126,14 +133,18 @@ RUN cd "${BUILD_HOME}" \
        --os=ubuntu:jammy --rosdistro="${ROS_DISTRO}" \
     && sudo rm -rf /var/lib/apt/lists/*
 
-RUN source /opt/ros/${ROS_DISTRO}/setup.bash \
+RUN --mount=type=cache,target=/home/${USERNAME}/.ccache,uid=${USER_UID},gid=${USER_UID} \
+    source /opt/ros/${ROS_DISTRO}/setup.bash \
     && cd "${BUILD_HOME}" \
     && colcon build --symlink-install \
        --event-handlers console_direct+ \
        --base-paths src \
        --cmake-args \
          ' -Wno-dev' \
-         ' -DCMAKE_BUILD_TYPE=Release'
+         ' -DCMAKE_BUILD_TYPE=Release' \
+         ' -DCMAKE_C_COMPILER_LAUNCHER=ccache' \
+         ' -DCMAKE_CXX_COMPILER_LAUNCHER=ccache' \
+    && ccache --show-stats
 
 RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> ~/.bashrc \
     && echo "source ${BUILD_HOME}/install/setup.bash" >> ~/.bashrc \

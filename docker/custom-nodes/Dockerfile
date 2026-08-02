@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Custom Nodes humble — GPU accelerated container for control and SLAM nodes
 FROM nvidia/cuda:12.2.2-devel-ubuntu22.04
 
@@ -43,6 +44,7 @@ RUN apt-get update && apt-get install -yq --no-install-recommends \
     python3-wheel \
     python3-setuptools \
     build-essential \
+    ccache \
     && rm -rf /var/lib/apt/lists/*
 
 # Setup user
@@ -79,6 +81,13 @@ RUN python3 -m pip install --no-cache-dir \
 # open3d/ultralytics/torch can drag in NumPy 2.x after this point.
 RUN python3 -m pip install --no-cache-dir "numpy==1.26.4"
 
+# ccache: the acados and colcon steps below mount a BuildKit cache at CCACHE_DIR,
+# so object files survive across `docker compose build` runs.
+# CMAKE_*_COMPILER_LAUNCHER is what actually routes compiles through ccache
+# (installing it is not enough).
+ENV CCACHE_DIR=/home/${USERNAME}/.ccache
+ENV CCACHE_MAXSIZE=5G
+
 # Acados
 ARG ACADOS_NUM_THREADS=6
 ARG ACADOS_OPENMP=ON
@@ -86,7 +95,8 @@ ENV ACADOS_ROOT=/home/${USERNAME}/sdks/acados
 ENV ACADOS_PATH=${ACADOS_ROOT}
 ENV ACADOS_SOURCE_DIR=${ACADOS_ROOT}
 
-RUN mkdir -p /home/${USERNAME}/sdks \
+RUN --mount=type=cache,target=/home/${USERNAME}/.ccache,uid=${USER_UID},gid=${USER_UID} \
+    mkdir -p /home/${USERNAME}/sdks \
     && cd /home/${USERNAME}/sdks \
     && git clone https://github.com/acados/acados.git \
     && cd acados \
@@ -97,6 +107,8 @@ RUN mkdir -p /home/${USERNAME}/sdks \
         -DACADOS_WITH_OSQP=ON \
         -DACADOS_INSTALL_DIR="${ACADOS_ROOT}" \
         -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
 #        "-DACADOS_NUM_THREADS=${ACADOS_NUM_THREADS}" \
         "-DACADOS_WITH_OPENMP=${ACADOS_OPENMP}" .. \
     && make -j"$(($(nproc)-1))" \
@@ -248,7 +260,8 @@ RUN cd "${BUILD_HOME}" \
        --skip-keys "${SKIPPED_ROSDEP_KEYS}" \
     && sudo rm -rf /var/lib/apt/lists/*
 
-RUN source /opt/ros/${ROS_DISTRO}/setup.bash \
+RUN --mount=type=cache,target=/home/${USERNAME}/.ccache,uid=${USER_UID},gid=${USER_UID} \
+    source /opt/ros/${ROS_DISTRO}/setup.bash \
     && cd "${BUILD_HOME}" \
     && colcon build --symlink-install \
        --event-handlers console_direct+ \
@@ -256,10 +269,14 @@ RUN source /opt/ros/${ROS_DISTRO}/setup.bash \
        --cmake-args \
          ' -Wno-dev' ' --no-warn-unused-cli' \
          ' -DCMAKE_BUILD_TYPE=Release' \
+         ' -DCMAKE_C_COMPILER_LAUNCHER=ccache' \
+         ' -DCMAKE_CXX_COMPILER_LAUNCHER=ccache' \
+         ' -DCMAKE_CUDA_COMPILER_LAUNCHER=ccache' \
          ' -DCMAKE_LIBRARY_PATH=/usr/local/cuda/lib64/stubs' \
          ' -DBOOST_BIND_GLOBAL_PLACEHOLDERS=1' \
          ' -DCMAKE_CXX_FLAGS="-Wl,--allow-shlib-undefined"' \
-         ' -DDOWNLOAD_ARTIFACTS=ON'
+         ' -DDOWNLOAD_ARTIFACTS=ON' \
+    && ccache --show-stats
 
 RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> ~/.bashrc \
     && echo "source ${BUILD_HOME}/install/setup.bash" >> ~/.bashrc \

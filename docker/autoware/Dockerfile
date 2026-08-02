@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Autoware humble — full perception / planning / control stack + Autoware bridge
 # No CARLA binary or Python client — pure Autoware + project packages + bridge.
 FROM ghcr.io/autowarefoundation/autoware:20240618-devel-cuda-amd64
@@ -26,7 +27,7 @@ RUN rm -f /etc/apt/sources.list.d/ros2*.list \
     && rm /tmp/ros2-apt-source.deb
 
 RUN apt-get update && apt-get install -yq --no-install-recommends \
-    sudo tzdata wget git curl unzip libvulkan1 \
+    sudo tzdata wget git curl unzip libvulkan1 ccache \
     && ln -fns /usr/share/zoneinfo/${TZ} /etc/localtime \
     && dpkg-reconfigure -f noninteractive tzdata \
     && rm -rf /var/lib/apt/lists/*
@@ -73,7 +74,11 @@ RUN cd "${BUILD_HOME}/src" \
     && git clone https://github.com/Robotics010/carla_tesla_model3_description.git
 
 ENV PYTHONWARNINGS="ignore:::setuptools.command.install,ignore:::setuptools.command.easy_install,ignore:::pkg_resources,ignore:::setuptools.command.develop"
+# ccache: the colcon step below mounts a BuildKit cache at CCACHE_DIR, so object
+# files survive across `docker compose build` runs. CMAKE_*_COMPILER_LAUNCHER is
+# what actually routes compiles through ccache (installing it is not enough).
 ENV CCACHE_DIR=/home/${USERNAME}/.ccache
+ENV CCACHE_MAXSIZE=5G
 
 ARG SKIPPED_ROSDEP_KEYS="k4a lio_sam fast_lio rf2o_laser_odometry cmake_modules pacmod3_msgs python3-open3d open3d librealsense2 realsense2_camera libopencv-dev libopencv-contrib-dev libopencv-imgproc-dev python-opencv python3-opencv"
 
@@ -86,7 +91,8 @@ RUN cd "${BUILD_HOME}" \
        --skip-keys "${SKIPPED_ROSDEP_KEYS}" \
     && sudo rm -rf /var/lib/apt/lists/*
 
-RUN source /opt/ros/${ROS_DISTRO}/setup.bash \
+RUN --mount=type=cache,target=/home/${USERNAME}/.ccache,uid=${USER_UID},gid=${USER_UID} \
+    source /opt/ros/${ROS_DISTRO}/setup.bash \
     && cd "${BUILD_HOME}" \
     && colcon build --symlink-install \
        --event-handlers console_direct+ \
@@ -94,10 +100,14 @@ RUN source /opt/ros/${ROS_DISTRO}/setup.bash \
        --cmake-args \
          ' -Wno-dev' ' --no-warn-unused-cli' \
          ' -DCMAKE_BUILD_TYPE=Release' \
+         ' -DCMAKE_C_COMPILER_LAUNCHER=ccache' \
+         ' -DCMAKE_CXX_COMPILER_LAUNCHER=ccache' \
+         ' -DCMAKE_CUDA_COMPILER_LAUNCHER=ccache' \
          ' -DCMAKE_LIBRARY_PATH=/usr/local/cuda/lib64/stubs' \
          ' -DBOOST_BIND_GLOBAL_PLACEHOLDERS=1' \
          ' -DCMAKE_CXX_FLAGS="-Wl,--allow-shlib-undefined"' \
-         ' -DDOWNLOAD_ARTIFACTS=ON'
+         ' -DDOWNLOAD_ARTIFACTS=ON' \
+    && ccache --show-stats
 
 RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> ~/.bashrc \
     && echo "source ${BUILD_HOME}/install/setup.bash" >> ~/.bashrc \
