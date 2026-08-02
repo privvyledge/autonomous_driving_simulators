@@ -111,6 +111,9 @@ services:
       # host launch dir over that source path means `ros2 launch <pkg> ...` reads
       # the host files directly. Edits to INCLUDED launch files still need a rebuild.
       - ./launch:/home/carla/carla_ros_ws/src/autonomous_driving_simulators/launch:ro
+      # Utility scripts run against the live world, e.g.
+      #   docker compose exec carla-ros-bridge python3 /scripts/reset_ego.py
+      - ./scripts:/scripts:ro
       - ./data/waypoints:/waypoints:ro
     deploy:
       resources:
