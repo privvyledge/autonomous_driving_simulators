@@ -13,6 +13,13 @@ ARG USERNAME=carla
 ARG USER_UID=1000
 ARG ROS_DISTRO=humble
 ARG ROBOTICS010_BRANCH=feature/add-humble-support
+# Exact ros-bridge commit to build. Pinned rather than tracking the branch head
+# for two reasons. Reproducibility, and -- less obviously -- cache correctness:
+# Docker keys a RUN layer on the command STRING, so `git clone -b <branch>` is a
+# cache hit forever and a plain rebuild silently keeps shipping whatever commit
+# was cloned the first time. Bumping this ARG changes the command and forces the
+# re-clone, so no --no-cache is needed to pick up a new bridge commit.
+ARG ROS_BRIDGE_REF=6b2be00f8102ffcb229ab673e526dc1f2b17e0ee
 
 ENV CARLA_VERSION=${CARLA_VERSION}
 ENV NVIDIA_DRIVER_CAPABILITIES=all
@@ -104,6 +111,8 @@ RUN cd "${BUILD_HOME}/src/carla" \
     && git clone --recurse-submodules \
        https://github.com/privvyledge/ros-bridge.git \
        -b "${ROBOTICS010_BRANCH}" \
+    && git -C ros-bridge checkout --detach "${ROS_BRIDGE_REF}" \
+    && git -C ros-bridge submodule update --init --recursive \
     && git clone https://github.com/Robotics010/carla_tesla_model3_description.git \
     && git clone https://github.com/Robotics010/carla_launch.git \
     && git clone https://github.com/Robotics010/carla_control_launch.git
