@@ -34,10 +34,18 @@ RUN rm -f /etc/apt/sources.list.d/ros2*.list \
     && dpkg -i /tmp/ros2-apt-source.deb \
     && rm /tmp/ros2-apt-source.deb
 
+# fontconfig + a real font family are needed by carla_manual_control (VIEW=True):
+# pygame's sysfont enumerates fonts by shelling out to `fc-list` with a 1-second
+# timeout. Qt drags fontconfig in transitively, but with no font package and a
+# cold cache the scan overruns that timeout, pygame.font.get_fonts() returns [],
+# and carla_manual_control dies on `fonts[0]` -> IndexError. `fc-cache -f` bakes
+# the cache into the image so the lookup is a fast hit at runtime.
 RUN apt-get update && apt-get install -yq --no-install-recommends \
     sudo tzdata wget unzip git curl python3-pip python3-wheel ccache \
+    fontconfig fonts-dejavu-core \
     && ln -fns /usr/share/zoneinfo/${TZ} /etc/localtime \
     && dpkg-reconfigure -f noninteractive tzdata \
+    && fc-cache -f \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --gid "${USER_UID}" "${USERNAME}" \
