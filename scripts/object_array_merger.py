@@ -12,7 +12,14 @@ What it does:
     meaningful for the merged topic as a whole;
   * namespaces ids per source, so two producers numbering from 0 cannot collide;
   * evicts a source's objects when it goes quiet for longer than its timeout;
-  * optionally drops near-duplicate objects between sources.
+  * optionally drops near-duplicate objects between sources;
+  * optionally keeps only objects within --ego-radius of the ego pose.
+
+The ego-radius filter is a throughput fix, not a semantic one. A subscriber
+cannot filter its way out of this cost: rclpy deserializes the whole ObjectArray
+inside the executor *before* any callback runs (measured on a 1235-object Town01
+array: 1.4 ms raw vs 137 ms deserialized -- about one full core at 8 Hz). The cut
+only pays off if it happens here, before the outgoing message is built.
 
 Per-source options matter more than they look:
 
@@ -55,6 +62,7 @@ from rclpy.qos import (QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile,
 from rclpy.utilities import remove_ros_args
 
 from derived_object_msgs.msg import ObjectArray
+from nav_msgs.msg import Odometry
 from std_msgs.msg import ColorRGBA
 from visualization_msgs.msg import Marker, MarkerArray
 
@@ -123,6 +131,13 @@ class ObjectArrayMerger(Node):
         self.dedup_radius = args.dedup_radius
         self.keep_stamps = not args.restamp
 
+        self.ego_radius = args.ego_radius
+        self.ego_timeout = args.ego_timeout
+        self.ego_xy = None
+        self.ego_rx = None       # rclpy Time of the most recent ego pose
+        self.warned_no_ego = False
+        self.warned_stale_ego = False
+
         self.sources = [Source(i, spec, args.timeout)
                         for i, spec in enumerate(args.source)]
         if len(self.sources) > MAX_SOURCES:
@@ -146,6 +161,12 @@ class ObjectArrayMerger(Node):
                 lambda msg, s=source: self._on_objects(s, msg),
                 source.qos())
             self.get_logger().info('source {}'.format(source))
+
+        if self.ego_radius > 0.0:
+            self.create_subscription(Odometry, args.ego_topic, self._on_ego, 10)
+            self.get_logger().info(
+                'ego-radius filter: keeping objects within {:g} m (planar) of '
+                '{}'.format(self.ego_radius, args.ego_topic))
 
         self.get_logger().info(
             'publishing merged ObjectArray on {} at {:g} Hz (frame {})'.format(
@@ -172,6 +193,48 @@ class ObjectArrayMerger(Node):
             self.get_logger().info('{} recovered ({} objects)'.format(
                 source.topic, len(msg.objects)))
 
+    def _on_ego(self, msg):
+        if (msg.header.frame_id and msg.header.frame_id != self.frame_id
+                and not self.warned_no_ego):
+            # Not fatal -- the pose is only used as a filter centre -- but a
+            # mismatched frame silently shifts which objects survive.
+            self.get_logger().warn(
+                'ego odometry is in frame {!r}, merged topic is {!r}; the '
+                'radius filter assumes they coincide'.format(
+                    msg.header.frame_id, self.frame_id))
+        self.ego_xy = (msg.pose.pose.position.x, msg.pose.pose.position.y)
+        self.ego_rx = self.get_clock().now()
+        if self.warned_stale_ego:
+            self.warned_stale_ego = False
+            self.get_logger().info('ego pose recovered; radius filter active')
+
+    def _filter_centre(self, now):
+        """Centre of the ego-radius filter, or None to publish unfiltered.
+
+        Both fallbacks are deliberate. An empty or truncated feed is
+        indistinguishable downstream from a clear road ahead, so when the ego
+        pose is missing or stale it is safer to ship every object and let the
+        consumer's own gate do the cutting than to silently hide obstacles
+        around a pose that no longer describes where the car is.
+        """
+        if self.ego_radius <= 0.0:
+            return None
+        if self.ego_xy is None:
+            if not self.warned_no_ego:
+                self.warned_no_ego = True
+                self.get_logger().warn(
+                    'no ego pose yet — publishing UNFILTERED until one arrives')
+            return None
+        if (self.ego_timeout > 0.0
+                and (now - self.ego_rx).nanoseconds * 1e-9 > self.ego_timeout):
+            if not self.warned_stale_ego:
+                self.warned_stale_ego = True
+                self.get_logger().warn(
+                    'ego pose older than {:g}s — publishing UNFILTERED'.format(
+                        self.ego_timeout))
+            return None
+        return self.ego_xy
+
     def _expire(self, source, now):
         """Drop a source's objects once it has been quiet for too long."""
         if source.timeout <= 0.0 or source.last_rx is None or not source.objects:
@@ -192,11 +255,21 @@ class ObjectArrayMerger(Node):
         merged.header.frame_id = self.frame_id
         merged.header.stamp = stamp
 
+        centre = self._filter_centre(now)
+        radius_sq = self.ego_radius ** 2
+
         kept = []
         origin = []          # source index per kept object, for marker colouring
         for source in self.sources:
             self._expire(source, now)
             for obj in source.objects:
+                if centre is not None:
+                    # Planar only: height is not a plan-view dimension, and
+                    # Town01's overhead geometry sits well above the ego.
+                    dx = obj.pose.position.x - centre[0]
+                    dy = obj.pose.position.y - centre[1]
+                    if dx * dx + dy * dy > radius_sq:
+                        continue
                 if self.dedup_radius > 0.0 and self._is_duplicate(obj, kept):
                     continue
                 if not self.keep_stamps:
@@ -276,6 +349,21 @@ def main():
     parser.add_argument('--dedup-radius', type=float, default=0.0,
                         help='drop an object within this distance of one from '
                              'an earlier source; 0 disables (default: %(default)s)')
+    parser.add_argument('--ego-topic', default='/carla/ego_vehicle/odometry',
+                        help='nav_msgs/Odometry giving the ego pose; only '
+                             'subscribed when --ego-radius > 0 '
+                             '(default: %(default)s)')
+    parser.add_argument('--ego-radius', type=float, default=0.0,
+                        help='keep only objects within this planar distance of '
+                             'the latest ego pose; 0 disables (default: '
+                             '%(default)s). Keep it comfortably larger than any '
+                             "consumer's own gate so this stays a pure "
+                             'throughput cut with no behavioural effect')
+    parser.add_argument('--ego-timeout', type=float, default=2.0,
+                        help='publish unfiltered once the ego pose is older '
+                             'than this many seconds — filtering around a stale '
+                             'pose hides real obstacles; 0 disables the check '
+                             '(default: %(default)s)')
     parser.add_argument('--restamp', action='store_true',
                         help='overwrite each object stamp with the publish time; '
                              'by default original stamps are kept so downstream '

@@ -217,6 +217,16 @@ RUN sudo apt-get update && sudo apt-get install -y --no-install-recommends \
     "ros-${ROS_DISTRO}-teleop-twist-keyboard" \
     && sudo rm -rf /var/lib/apt/lists/*
 
+# py-spy: sampling profiler that attaches to a LIVE python process by pid, so a
+# node that is starving its own control loop can be diagnosed without restarting
+# it under cProfile. This is how the merger's deserialization cost was found.
+#   sudo py-spy top --pid $(pgrep -f object_array_merger)
+#   sudo py-spy dump --pid <pid>          # per-thread stacks, one shot
+# Needs cap_add: [SYS_PTRACE] on the service (set in docker-compose.yml) —
+# Docker drops CAP_SYS_PTRACE by default and yama ptrace_scope=1 then blocks
+# attaching to a non-child process with "Permission denied (os error 13)".
+RUN python3 -m pip install --no-cache-dir py-spy
+
 # ── ROS2 workspace ───────────────────────────────────────────────────────────
 ENV BUILD_HOME=/home/${USERNAME}/carla_ros_ws
 RUN mkdir -p "${BUILD_HOME}/src"

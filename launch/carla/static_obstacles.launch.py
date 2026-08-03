@@ -97,6 +97,8 @@ def launch_setup(context, *args, **kwargs):
         '--frame-id', cfg('frame_id'),
         '--rate', cfg('rate'),
         '--dedup-radius', cfg('dedup_radius'),
+        '--ego-topic', cfg('ego_topic'),
+        '--ego-radius', cfg('ego_radius'),
     ]
     if flag('markers'):
         merger_args.append('--markers')
@@ -168,6 +170,17 @@ def generate_launch_description():
             'dedup_radius', default_value='0.0',
             description='drop an object within this distance of one from an '
                         'earlier source; 0 disables'),
+        DeclareLaunchArgument(
+            'ego_topic', default_value='/carla/ego_vehicle/odometry',
+            description='ego pose used as the centre of the merger radius filter'),
+        DeclareLaunchArgument(
+            'ego_radius', default_value='80.0',
+            description='publish only objects within this planar distance of the '
+                        'ego. A whole-level array (1235 objects in Town01) costs a '
+                        'subscriber ~137 ms per message just to deserialize, before '
+                        'any callback runs, so no downstream filter can recover it. '
+                        'Keep this larger than any consumer gate (the MPC uses 50 m) '
+                        'so it stays a pure throughput cut. 0 disables'),
         DeclareLaunchArgument('markers', default_value='True'),
         DeclareLaunchArgument('launch_merger', default_value='True'),
         DeclareLaunchArgument(

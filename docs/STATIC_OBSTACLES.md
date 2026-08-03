@@ -190,10 +190,13 @@ docker compose exec carla-ros-bridge bash -c \
 
 Arguments: `host` `port` `labels` `near` `radius` `z_band` `slim_overhead`
 `slim_radius` `max_footprint` `static_topic` `static_rate` `actor_topic` `merged_topic`
-`frame_id` `rate` `dedup_radius` `markers` `launch_merger`.
+`frame_id` `rate` `dedup_radius` `ego_topic` `ego_radius` `markers`
+`launch_merger`.
 
 `static_rate` (default 1.0) is the static publisher's republish rate; `rate`
-(default 10.0) is the merger's.
+(default 10.0) is the merger's. `ego_radius` (default 80.0 m, `0` disables)
+publishes only what is near the ego — see [Cost, and the ego-radius
+filter](#cost-and-the-ego-radius-filter).
 
 ## RViz
 
@@ -263,17 +266,41 @@ With `Static`/`Fences`/`Walls` on and `max_footprint: 8.0`, nothing published
 intrudes into the Town01 ego lane (`x` −4.0 … 0.0, `y` −2 … −330) except the
 `SpeedLimiter92` post, whose box edge stops exactly at the lane boundary.
 
-### Cost
+### Cost, and the ego-radius filter
 
-The set grows from ~115 to ~1229 objects, i.e. ~280 KB per `ObjectArray`.
-`object_array_merger` rebuilds and republishes that every tick and saturates one
-core, so `/carla/merged_obstacles` is delivered at ~7.4 Hz rather than the
-configured 10 Hz (about half that CPU is the RViz `MarkerArray`; drop `markers`
-to halve it). Dynamic freshness is unaffected — the bridge itself only publishes
-`/carla/ego_vehicle/objects` at ~4.5 Hz, and static geometry never moves. If the
-rate matters, narrow `radius` or turn `Walls`/`Fences` back off; most of the
-1229 are building perimeter walls tens of metres off the route (only ~120 objects
-lie within 12 m of it).
+The set grows from ~115 to ~1229 objects, i.e. ~280 KB per `ObjectArray`. That
+is expensive on both ends: `object_array_merger` saturates a core rebuilding it
+every tick, and — worse — every *subscriber* pays ~137 ms per message just to
+have rclpy deserialize it, inside the executor **before** any callback runs
+(1.4 ms for the same message subscribed `raw=True`). Measured by the MPC side on
+2026-08-03, that alone dragged their 20 Hz control loop down to ~6.7 Hz. No
+downstream filter can recover it; the cut has to happen before the message is
+built.
+
+So the merger takes `--ego-radius` (launch arg `ego_radius`, **default 80.0 m**)
+and `--ego-topic` (`/carla/ego_vehicle/odometry`), keeping only objects within
+that **planar** distance of the ego. Measured on the Town01 route:
+
+| | before | after (80 m) |
+|---|---|---|
+| objects per message | 1235 | **185** |
+| message size | ~280 KB | **42.9 KB** |
+| bandwidth | ~2.3 MB/s | **432 KB/s** |
+| delivered rate | ~7.4 Hz | **9.96 Hz** |
+
+Keep `ego_radius` comfortably larger than any consumer's own gate (the MPC uses
+50 m) so it stays a pure throughput change with no effect on behaviour. Set it
+to `0` to disable and publish the whole level as before.
+
+If the ego pose has not arrived yet, or is older than `--ego-timeout` (2 s), the
+merger publishes **unfiltered** and warns. That is deliberate: a truncated feed
+is indistinguishable downstream from a clear road, so shipping too much is the
+safe failure and a silence watchdog only catches "no message at all".
+
+Dynamic freshness is unaffected — the bridge itself only publishes
+`/carla/ego_vehicle/objects` at ~4.5 Hz, and static geometry never moves. Other
+levers, if still needed: drop `markers` (about half the merger's own CPU),
+narrow `radius` at extraction time, or turn `Walls`/`Fences` back off.
 
 `env.bounding_box.location` is world-frame for environment objects — composing
 `env.transform` on top of it double-counts the translation. Re-check with

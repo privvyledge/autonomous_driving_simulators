@@ -17,6 +17,8 @@
   <depend>derived_object_msgs</depend>
   <depend>shape_msgs</depend>
   <depend>visualization_msgs</depend>
+  <!-- Odometry, the ego pose object_array_merger.py centres its radius filter on. -->
+  <depend>nav_msgs</depend>
 
   <exec_depend>ros2launch</exec_depend>
 

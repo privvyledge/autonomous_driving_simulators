@@ -187,6 +187,10 @@ services:
     runtime: nvidia
     depends_on:
       - carla-ros-bridge
+    # py-spy attaches to a running node by pid; without SYS_PTRACE the kernel
+    # refuses (yama ptrace_scope=1 allows only descendants).
+    cap_add:
+      - SYS_PTRACE
     <<: *ros-common
     environment:
       <<: *ros-env
