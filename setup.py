@@ -66,8 +66,17 @@ setup(
                 'coupled_kinematic_casadi = autonomous_driving_simulators.coupled_kinematic_casadi:main',
             ],
         },
+        # Installed into lib/<pkg>/, which is what makes `ros2 run <pkg> <name>.py`
+        # and Node(package=..., executable='<name>.py') work. These keep their
+        # .py suffix as the executable name, matching start_carla_simulator.py.
+        # static_obstacle_publisher.py imports dump_static_obstacles as a
+        # sibling module, so both must be installed together.
         scripts=[
             'scripts/CarlaUE4.sh',
-            'scripts/start_carla_simulator.py'
+            'scripts/start_carla_simulator.py',
+            'scripts/reset_ego.py',
+            'scripts/dump_static_obstacles.py',
+            'scripts/static_obstacle_publisher.py',
+            'scripts/object_array_merger.py'
         ],
 )

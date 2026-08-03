@@ -7,9 +7,16 @@
   <maintainer email="bso19a@fsu.edu">Boluwatife Olabiran</maintainer>
   <license>TODO: License declaration</license>
 
+  <depend>rclpy</depend>
   <depend>std_msgs</depend>
   <depend>ackermann_msgs</depend>
   <depend>tf_transformations</depend>
+  <!-- ObjectArray/Object, used by object_array_merger.py and
+       static_obstacle_publisher.py; same type carla_ros_bridge publishes on
+       /carla/ego_vehicle/objects. shape_msgs supplies Object.shape. -->
+  <depend>derived_object_msgs</depend>
+  <depend>shape_msgs</depend>
+  <depend>visualization_msgs</depend>
 
   <exec_depend>ros2launch</exec_depend>
 
