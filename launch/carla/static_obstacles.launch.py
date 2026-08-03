@@ -63,6 +63,7 @@ def launch_setup(context, *args, **kwargs):
         '--port', cfg('port'),
         '--topic', cfg('static_topic'),
         '--frame-id', cfg('frame_id'),
+        '--rate', cfg('static_rate'),
     ]
     # config_file supplies the label selection and filter defaults; the
     # remaining arguments override it only when explicitly set, so leaving
@@ -140,6 +141,15 @@ def generate_launch_description():
             description='half-width in metres of that post; empty falls back to '
                         'config_file (0.3)'),
         DeclareLaunchArgument('static_topic', default_value='/carla/static_obstacles'),
+        DeclareLaunchArgument(
+            'static_rate', default_value='1.0',
+            description='republish rate in Hz for the static set. The topic is '
+                        'latched, so 0 (publish once) is enough for any node that '
+                        'subscribes TRANSIENT_LOCAL -- but an RViz MarkerArray '
+                        'display defaults to VOLATILE and would then show nothing '
+                        'at all, having joined after the single message was sent. '
+                        'A slow republish costs almost nothing and makes the topic '
+                        'visible regardless of the subscriber QoS'),
         DeclareLaunchArgument('actor_topic', default_value='/carla/ego_vehicle/objects'),
         DeclareLaunchArgument(
             'merged_topic', default_value='/carla/merged_obstacles',

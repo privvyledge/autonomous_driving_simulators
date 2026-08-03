@@ -159,27 +159,81 @@ class StaticObstaclePublisher(Node):
             self.create_publisher(MarkerArray, args.topic + '/markers', qos)
             if args.markers else None)
 
-        client = carla.Client(args.host, args.port)
-        client.set_timeout(10.0)
-        world = client.get_world()
+        self.client = carla.Client(args.host, args.port)
+        self.client.set_timeout(10.0)
+        world = self.client.get_world()
+        self.world_id = world.id
 
-        labels, near, radius, z_band, slim = resolve_filters(args)
-        self.objects = collect(world, labels, near=near, radius=radius,
-                               z_band=z_band, slim=slim)
-        self.get_logger().info(
-            'collected {} static objects from {} (labels: {}; z_band: {}); '
-            '{} re-anchored to a {} m post because their box carried '
-            'overhead geometry'.format(
-                len(self.objects), world.get_map().name, ', '.join(labels),
-                z_band if z_band else 'unfiltered — overhead geometry included',
-                sum(1 for o in self.objects if o['slimmed']), slim))
-        if not self.objects:
-            self.get_logger().warn(
-                'no static geometry matched -- check --labels and the --near/--radius filter')
+        self.filters = resolve_filters(args)
+        self.objects = self.recollect(world)
 
         self.publish_once()
         if args.rate > 0.0:
             self.create_timer(1.0 / args.rate, self.publish_once)
+        if args.refresh > 0.0:
+            self.create_timer(args.refresh, self.refresh_if_world_changed)
+
+    def recollect(self, world):
+        """Extract the obstacle set from `world` and report what came back."""
+        labels, near, radius, z_band, slim = self.filters
+        objects = collect(world, labels, near=near, radius=radius,
+                          z_band=z_band, slim=slim)
+        self.get_logger().info(
+            'collected {} static objects from {} (labels: {}; z_band: {}); '
+            '{} re-anchored to a {} m post because their box carried '
+            'overhead geometry'.format(
+                len(objects), world.get_map().name, ', '.join(labels),
+                z_band if z_band else 'unfiltered — overhead geometry included',
+                sum(1 for o in objects if o['slimmed']), slim))
+        unslimmable = [o for o in objects if o['unslimmable']]
+        if unslimmable:
+            # Overhead geometry with no support to re-anchor to. Whatever these
+            # are, they are wide boxes several metres up that a planner will see
+            # as ground obstacles, so name them rather than burying the count.
+            self.get_logger().warn(
+                '{} object(s) carry overhead geometry but their mesh pivot fell '
+                'outside their own footprint, so the full box was kept and may '
+                'block the road: {}'.format(
+                    len(unslimmable),
+                    ', '.join('{} at ({:.1f}, {:.1f}) {:.2f}x{:.2f} m'.format(
+                        o['name'], o['ros']['x'], o['ros']['y'],
+                        o['extent']['x'] * 2.0, o['extent']['y'] * 2.0)
+                        for o in unslimmable[:10])))
+        if not objects:
+            self.get_logger().warn(
+                'no static geometry matched -- check --labels and the --near/--radius filter')
+        return objects
+
+    def refresh_if_world_changed(self):
+        """Re-extract the set when CARLA has started a new episode.
+
+        The obstacle set is a snapshot taken once at startup, which is only safe
+        while the world lives. Reloading the map -- or any world reset, including
+        the one carla_ros_bridge performs when RELOAD_MAP is on -- makes CARLA
+        rebuild every environment object with a fresh id. The latched message
+        then keeps advertising geometry from a world that no longer exists:
+        measured on Town01, 281 of 283 published ids were absent from the
+        reloaded world, leaving phantom boxes over the road that no dump could
+        reproduce. carla.World.id changes per episode, so it is the invalidation
+        signal; comparing map names is not enough, because a reload of the *same*
+        map regenerates the ids just the same.
+        """
+        try:
+            world = self.client.get_world()
+            world_id = world.id
+        except RuntimeError as exc:
+            self.get_logger().warn(
+                'cannot reach CARLA to check for a world reload: {}'.format(exc))
+            return
+        if world_id == self.world_id:
+            return
+        self.get_logger().warn(
+            'CARLA episode changed ({} -> {}); the {} published object(s) belong '
+            'to the previous world -- re-extracting'.format(
+                self.world_id, world_id, len(self.objects)))
+        self.world_id = world_id
+        self.objects = self.recollect(world)
+        self.publish_once()
 
     def publish_once(self):
         stamp = self.get_clock().now().to_msg()
@@ -199,6 +253,11 @@ def main():
                         help='must match the bridge, which publishes objects in map')
     parser.add_argument('--rate', type=float, default=0.0,
                         help='republish rate in Hz; 0 = publish once and rely on latching')
+    parser.add_argument('--refresh', type=float, default=2.0, metavar='SECONDS',
+                        help='how often to check whether CARLA started a new '
+                             'episode and re-extract if so; 0 disables (default: '
+                             '%(default)s). Without this a map reload leaves the '
+                             'latched topic serving obstacles from the dead world')
     parser.add_argument('--markers', action='store_true',
                         help='also publish a MarkerArray on <topic>/markers for RViz')
     args = parser.parse_args()

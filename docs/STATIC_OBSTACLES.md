@@ -98,7 +98,24 @@ docker compose exec carla-ros-bridge bash -c \
      --config /config/static_obstacles.yaml --markers"
 ```
 
-It publishes once and goes quiet — that is the latching working, not a hang.
+With no `--rate` it publishes once and goes quiet — that is the latching
+working, not a hang. The launch file passes `--rate 1.0` instead, because an
+RViz `MarkerArray` display subscribes **VOLATILE** by default and therefore sees
+nothing at all from a publish-once producer: it joins after the only message was
+sent. A slow republish costs nothing and makes the topic visible whatever the
+subscriber QoS. To echo a publish-once run by hand you must ask for the
+durability explicitly:
+
+```bash
+ros2 topic echo --once --qos-durability transient_local /carla/static_obstacles
+```
+
+The node also re-extracts the set when CARLA starts a new episode (`--refresh`,
+default 2 s). Without that a map reload leaves the latched topic serving
+geometry from the world that no longer exists — CARLA regenerates every
+environment-object id on load, so the published boxes stop corresponding to
+anything and phantoms appear wherever the old geometry used to be. `world.id`
+is the signal; the map *name* is unchanged by a same-map reload.
 
 ### Merge
 
@@ -163,8 +180,11 @@ docker compose exec carla-ros-bridge bash -c \
 ```
 
 Arguments: `host` `port` `labels` `near` `radius` `z_band` `slim_overhead`
-`slim_radius` `static_topic` `actor_topic` `merged_topic` `frame_id` `rate`
-`dedup_radius` `markers` `launch_merger`.
+`slim_radius` `static_topic` `static_rate` `actor_topic` `merged_topic`
+`frame_id` `rate` `dedup_radius` `markers` `launch_merger`.
+
+`static_rate` (default 1.0) is the static publisher's republish rate; `rate`
+(default 10.0) is the merger's.
 
 ## RViz
 

@@ -75,6 +75,25 @@ def to_ros(x, y, z, yaw_deg):
     return x, -y, z, -yaw_deg
 
 
+def pivot_in_footprint(pivot, bb):
+    """True if the mesh pivot lies inside the bounding box's footprint.
+
+    bb.extent is expressed in the BOX's own frame (bb.rotation), so the offset
+    from the box centre to the pivot has to be rotated into that frame before
+    it is compared against the extents. Testing world-axis deltas instead only
+    works for a box with zero yaw: a street lamp rotated 90 degrees carries its
+    ~1.9 m arm extent on the box's local x while the offset shows up on world
+    y, the test fails, and the arm is republished at full width over the road.
+    """
+    dx = pivot.x - bb.location.x
+    dy = pivot.y - bb.location.y
+    cos_y = math.cos(math.radians(bb.rotation.yaw))
+    sin_y = math.sin(math.radians(bb.rotation.yaw))
+    local_x = dx * cos_y + dy * sin_y
+    local_y = -dx * sin_y + dy * cos_y
+    return abs(local_x) <= bb.extent.x and abs(local_y) <= bb.extent.y
+
+
 def collect(world, labels, near=None, radius=50.0, z_band=None, slim=None):
     """Return the level's static geometry as plain dicts, sorted along the road.
 
@@ -114,10 +133,9 @@ def collect(world, labels, near=None, radius=50.0, z_band=None, slim=None):
             if z_band is not None and (z_hi < z_band[0] or z_lo > z_band[1]):
                 continue
             pivot = env.transform.location
-            slimmed = (slim is not None and z_band is not None
-                       and z_hi > z_band[1] and max(ex, ey) > slim
-                       and abs(pivot.x - loc.x) <= ex
-                       and abs(pivot.y - loc.y) <= ey)
+            overhead = (slim is not None and z_band is not None
+                        and z_hi > z_band[1] and max(ex, ey) > slim)
+            slimmed = overhead and pivot_in_footprint(pivot, bb)
             if slimmed:
                 rx, ry = pivot.x, -pivot.y
                 z_lo, z_hi = max(z_lo, z_band[0]), min(z_hi, z_band[1])
@@ -145,6 +163,12 @@ def collect(world, labels, near=None, radius=50.0, z_band=None, slim=None):
                 # True when the AABB was replaced by a post at the mesh pivot
                 # because it carried overhead geometry; see collect().
                 'slimmed': slimmed,
+                # True when the object looks like overhead geometry (pokes above
+                # the band, wider than a post) but its pivot fell OUTSIDE its own
+                # footprint, so there was no support to re-anchor to and the full
+                # box was kept. These are the boxes most likely to sit over the
+                # carriageway -- inspect them before trusting the set.
+                'unslimmable': overhead and not slimmed,
                 # Vertical span, so a consumer can tell a pole from an overhead
                 # lamp arm without recomputing it.
                 'z_span': [round(z_lo, 3), round(z_hi, 3)],
@@ -275,8 +299,7 @@ def main(argv=None):
                           composed.x, composed.y, composed.z,
                           bb.extent.x, bb.extent.y, bb.extent.z,
                           bb.location.z - bb.extent.z, bb.location.z + bb.extent.z,
-                          abs(t.x - bb.location.x) <= bb.extent.x
-                          and abs(t.y - bb.location.y) <= bb.extent.y))
+                          pivot_in_footprint(t, bb)))
         return
 
     objects = collect(world, labels, near=near, radius=radius, z_band=z_band,
@@ -290,6 +313,7 @@ def main(argv=None):
         },
         'count': len(objects),
         'slimmed_count': sum(1 for o in objects if o['slimmed']),
+        'unslimmable_count': sum(1 for o in objects if o['unslimmable']),
         'objects': objects,
     }
     text = json.dumps(payload, indent=2)
