@@ -32,9 +32,17 @@ Typical CARLA use (bridge actors + static poles -> one topic for the MPC):
         --source /carla/static_objects:latched,timeout=0 \
         --output /obstacles --rate 10
 
-or, with no rebuild, straight off the bind mount:
+or, with no rebuild, straight off the bind mount. ROS is sourced only from
+~/.bashrc, which a non-interactive `docker compose exec ... python3` never
+reads, so source it explicitly or this dies on ModuleNotFoundError: rclpy:
 
-    docker compose exec carla-ros-bridge python3 /scripts/object_array_merger.py ...
+    docker compose exec custom-nodes bash -c \
+        "source /opt/ros/humble/setup.bash \
+         && source ~/carla_ros_ws/install/setup.bash \
+         && python3 /scripts/object_array_merger.py \
+              --source /carla/ego_vehicle/objects \
+              --source /carla/static_objects:latched,timeout=0 \
+              --output /obstacles --rate 10"
 """
 import argparse
 import math

@@ -11,11 +11,19 @@ world-frame oriented bounding box per object. It is static for the lifetime of
 the map, so dump it once at startup and load it as a fixed obstacle set rather
 than polling it every control cycle.
 
-`scripts/` is bind-mounted into the carla-ros-bridge container at /scripts:
+`scripts/` is bind-mounted into the carla-ros-bridge container at /scripts. This
+tool needs only the CARLA client, not ROS, so it runs without sourcing anything:
 
     docker compose exec carla-ros-bridge python3 /scripts/dump_static_obstacles.py
     docker compose exec carla-ros-bridge python3 /scripts/dump_static_obstacles.py \
-        --labels Poles TrafficSigns --near -2.0,-180.0 --radius 60 -o /config/static_obstacles.json
+        --labels Poles TrafficSigns --near=-2.0,-165.0 --radius 200 \
+        -o /config/static_obstacles.json
+
+--near MUST use the `=` form whenever the coordinates are negative. Written as
+`--near -2.0,-165.0` argparse sees a token starting with `-` that is not a bare
+negative number (the comma defeats its negative-number matcher), treats it as an
+unknown option and fails with "expected one argument". Quoting does not help:
+argparse inspects the string itself, not the shell's word splitting.
 
 Output holds both frames: `carla` (left-handed, as the simulator reports it) and
 `ros` (y and yaw negated — the frame objects.json, /carla/ego_vehicle/odometry

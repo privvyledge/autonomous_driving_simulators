@@ -201,6 +201,12 @@ services:
       - ./config:/config:ro
       - ./launch:/launch:ro
       - ./maps:/maps:ro
+      # Same utility-script mount as carla-ros-bridge. object_array_merger.py
+      # runs here, next to the controllers, and needs no CARLA client. ROS is
+      # only sourced in ~/.bashrc, which `exec python3 ...` never reads, so:
+      #   docker compose exec custom-nodes bash -c \
+      #     "source /opt/ros/humble/setup.bash && python3 /scripts/object_array_merger.py ..."
+      - ./scripts:/scripts:ro
       - ./data/waypoints:/waypoints:ro
       # Writable host-backed scratch/output dir: YOLO .pt/.onnx/.engine models,
       # MPC build artifacts, recorded waypoints, videos, etc. persist across recreates.

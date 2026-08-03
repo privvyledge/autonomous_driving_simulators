@@ -17,11 +17,17 @@ The geometry is static for the lifetime of the map, so the topic is latched
 receives it. Use --rate to republish periodically instead.
 
 `scripts/` is bind-mounted into the carla-ros-bridge container at /scripts, so
-this runs with no image rebuild:
+this runs with no image rebuild -- but ROS is sourced only from ~/.bashrc, which
+a non-interactive `docker compose exec ... python3` never reads. Without the
+explicit source it dies on `ModuleNotFoundError: No module named 'rclpy'`:
 
-    docker compose exec carla-ros-bridge python3 /scripts/static_obstacle_publisher.py
-    docker compose exec carla-ros-bridge python3 /scripts/static_obstacle_publisher.py \
-        --labels Poles --near -2.0,-180.0 --radius 120 --markers
+    docker compose exec carla-ros-bridge bash -c \
+        "source /opt/ros/humble/setup.bash \
+         && source ~/carla_ros_ws/install/setup.bash \
+         && python3 /scripts/static_obstacle_publisher.py \
+              --labels Poles --near=-2.0,-165.0 --radius 200 --markers"
+
+--near needs the `=` form for negative coordinates; see dump_static_obstacles.py.
 
 Then, from any container on the same ROS_DOMAIN_ID:
 
