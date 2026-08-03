@@ -71,15 +71,17 @@ ENV PATH=/home/${USERNAME}/.local/bin:$PATH
 RUN python3 -m pip install -U pip "setuptools<71.0.0" wheel
 
 # ── MPC Toolchain ────────────────────────────────────────────────────────────
-RUN python3 -m pip install --no-cache-dir \
-    "do-mpc" "casadi==3.7.2" \
-    "transforms3d==0.4.2" "scipy==1.15.3" \
-    networkx simple-pid
-
-# Pin NumPy to the 1.x ABI — NumPy 2.x breaks cv_bridge (built against NumPy 1.x).
+# NumPy is pinned to the 1.x ABI here (not in a follow-up layer) because NumPy 2.x
+# breaks cv_bridge, which is built against 1.x — resolving it in the same pip run
+# stops casadi/scipy from pulling a 2.x wheel that would immediately be discarded.
 # NOTE: the ML toolchain below re-pins NumPy again as the final pip action, since
 # open3d/ultralytics/torch can drag in NumPy 2.x after this point.
-RUN python3 -m pip install --no-cache-dir "numpy==1.26.4"
+# --retries/--timeout: PyPI transfers here have corrupted mid-download before.
+RUN python3 -m pip install --no-cache-dir --retries 5 --timeout 60 \
+    "do-mpc" "casadi==3.7.2" \
+    "transforms3d==0.4.2" "scipy==1.15.3" \
+    "numpy==1.26.4" \
+    networkx simple-pid
 
 # ccache: the acados and colcon steps below mount a BuildKit cache at CCACHE_DIR,
 # so object files survive across `docker compose build` runs.
