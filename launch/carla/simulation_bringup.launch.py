@@ -10,6 +10,20 @@ from launch.conditions import IfCondition, UnlessCondition, LaunchConfigurationE
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from ament_index_python.packages import get_package_share_directory
 
+
+def _first_existing(paths):
+    """Return the first path that exists, or None.
+
+    Used to prefer the bind-mounted /launch and /config over the image's
+    installed share dir, so files added by a `git pull` are picked up without a
+    `docker compose build`.
+    """
+    for path in paths:
+        if path and os.path.exists(path):
+            return path
+    return None
+
+
 def launch_setup(context, *args, **kwargs):
     # Setup default paths
     objects_definition_json = os.path.join(
@@ -268,21 +282,35 @@ def launch_setup(context, *args, **kwargs):
     #    reaches ROS. This publishes it and merges it with the bridge's actor
     #    stream onto /carla/merged_obstacles -- the single topic an
     #    obstacle-avoiding controller should subscribe to.
-    static_obstacles_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(
-                get_package_share_directory('autonomous_driving_simulators'),
-                'launch', 'carla', 'static_obstacles.launch.py'
-            )
-        ),
-        condition=IfCondition(LaunchConfiguration('launch_static_obstacles')),
-        launch_arguments={
-            'host': host,
-            'port': port,
-            'config_file': LaunchConfiguration('static_obstacles_config'),
-            'actor_topic': ['/carla/', role_name, '/objects'],
-        }.items()
-    )
+    #
+    #    Resolved bind-mount-first, exactly like static_obstacles.launch.py runs
+    #    its nodes from /scripts: this file is live through the ./launch mount but
+    #    the installed share/ dir is frozen at image-build time, so a `git pull`
+    #    that adds a new launch file leaves get_package_share_directory() pointing
+    #    at nothing. Missing on both paths -> skip the step instead of aborting the
+    #    whole bringup, since everything above it is what actually drives the car.
+    static_obstacles_launch_file = _first_existing([
+        os.path.join('/launch', 'carla', 'static_obstacles.launch.py'),
+        os.path.join(pkg_share, 'launch', 'carla', 'static_obstacles.launch.py'),
+    ])
+
+    static_obstacles_launch = []
+    if static_obstacles_launch_file:
+        static_obstacles_launch = [IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(static_obstacles_launch_file),
+            condition=IfCondition(LaunchConfiguration('launch_static_obstacles')),
+            launch_arguments={
+                'host': host,
+                'port': port,
+                'config_file': LaunchConfiguration('static_obstacles_config'),
+                'actor_topic': ['/carla/', role_name, '/objects'],
+            }.items()
+        )]
+    else:
+        print('[simulation_bringup] static_obstacles.launch.py not found in /launch '
+              'or the installed share dir -- skipping static obstacle publishing. '
+              'Rebuild the image (docker compose build carla-ros-bridge) or mount '
+              './launch to enable it.', file=sys.stderr)
 
     return [
         carla_ros_bridge_launch,
@@ -293,12 +321,17 @@ def launch_setup(context, *args, **kwargs):
         carla_autoware_bridge_launch,
         carla_manual_control_launch,
         actuation_group,
-        static_obstacles_launch
-    ]
+    ] + static_obstacles_launch
 
 def generate_launch_description():
     pkg_share = get_package_share_directory('autonomous_driving_simulators')
     default_objects_definition = os.path.join(pkg_share, 'config', 'obstacles.json')
+    # Same bind-mount-first rule as the launch file above: ./config is mounted at
+    # /config, while share/config is whatever the image was built with.
+    default_static_obstacles_config = _first_existing([
+        '/config/static_obstacles.yaml',
+        os.path.join(pkg_share, 'config', 'static_obstacles.yaml'),
+    ]) or ''
 
     return LaunchDescription([
         DeclareLaunchArgument('use_sim_time', default_value='True', description='Use simulated clock.'),
@@ -321,7 +354,7 @@ def generate_launch_description():
         DeclareLaunchArgument('launch_builtin_agent', default_value='True', description='Launch built-in AD agent'),
         DeclareLaunchArgument('launch_autoware_bridge', default_value='False', description='Launch autoware bridge'),
         DeclareLaunchArgument('launch_static_obstacles', default_value='True', description='Publish CARLA baked level geometry (light poles, signs) that carla_ros_bridge cannot see, and merge it with the bridge actor stream onto /carla/merged_obstacles.'),
-        DeclareLaunchArgument('static_obstacles_config', default_value=os.path.join(pkg_share, 'config', 'static_obstacles.yaml'), description='YAML selecting which carla.CityObjectLabel types count as obstacles, plus height/radius filter defaults.'),
+        DeclareLaunchArgument('static_obstacles_config', default_value=default_static_obstacles_config, description='YAML selecting which carla.CityObjectLabel types count as obstacles, plus height/radius filter defaults. Empty means the publisher uses its built-in defaults.'),
         DeclareLaunchArgument('reload_map', default_value='True', description="If False, attach to the already-loaded CARLA map instead of calling load_world() (avoids heavy-map reload crashes on resource-limited servers)."),
         DeclareLaunchArgument('view', default_value='False', description='Launch the carla_manual_control pygame viewer (needs a DISPLAY and a spawned ego).'),
         DeclareLaunchArgument('launch_actuation', default_value='False', description='Run CARLA low-level actuation (carla_ackermann_control / carla_twist_to_control) in this container for the custom-controller path. Set launch_builtin_agent:=False when True so the built-in AD agent and the actuation node do not both publish vehicle_control_cmd.'),
