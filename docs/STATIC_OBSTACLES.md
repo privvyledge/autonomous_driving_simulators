@@ -49,8 +49,17 @@ Write `--near=-2.0,-165.0`.
 ### Choosing which geometry counts as an obstacle
 
 `config/static_obstacles.yaml` lists every `carla.CityObjectLabel` with a
-true/false flag, plus filter defaults (`z_band`, `near`, `radius`). Both tools
-read it via `--config`; any explicit flag overrides the file.
+true/false flag, plus filter defaults (`z_band`, `near`, `radius`,
+`max_footprint`). Both tools read it via `--config`; any explicit flag overrides
+the file.
+
+Enabled by default: `Poles`, `TrafficSigns`, `TrafficLight`, `Fences`, `Walls`,
+`Static`. `Static` is CARLA's prop catch-all and is where Town01 keeps its fire
+hydrants, bollards and chain barriers — solid in the simulator, reported by no
+other label, so leaving it off let the ego collide with obstacles that never
+reached ROS. `Fences`/`Walls` cover the plot fencing and low perimeter walls
+along the route. Together these take the Town01 route window from ~115 objects
+to ~1230; see "Bulk boxes" below for the one artefact that comes with them.
 
 Ask the simulator what it actually exposes — authoritative for your CARLA
 build and map, unlike the hardcoded list in the YAML comments:
@@ -180,7 +189,7 @@ docker compose exec carla-ros-bridge bash -c \
 ```
 
 Arguments: `host` `port` `labels` `near` `radius` `z_band` `slim_overhead`
-`slim_radius` `static_topic` `static_rate` `actor_topic` `merged_topic`
+`slim_radius` `max_footprint` `static_topic` `static_rate` `actor_topic` `merged_topic`
 `frame_id` `rate` `dedup_radius` `markers` `launch_merger`.
 
 `static_rate` (default 1.0) is the static publisher's republish rate; `rate`
@@ -230,6 +239,41 @@ to a `slim_radius` × `slim_radius` post at that pivot, clipped to the band —
 Objects carry a `slimmed` flag and the dump reports `slimmed_count`. Tune with
 `slim_overhead` / `slim_radius` in `config/static_obstacles.yaml`, or
 `--slim-radius` / `--no-slim` on either script.
+
+## Bulk boxes — `max_footprint`
+
+The same one-AABB-per-mesh limitation bites a second way once `Fences`/`Walls`
+are on. A spline fence or wall that turns a corner is one mesh, so CARLA reports
+one box spanning its whole plot. Town01's `SM_Town01_Fence02` comes back as a
+**34.9 × 16.3 m** box centred at ROS `(9.3, -328.6)`: the fence itself runs along
+the plot's edges, but the box swallows the carriageway at the south end of the
+test route. Slimming cannot save it — its pivot falls outside its own footprint,
+so there is no support to re-anchor to (it shows up as `unslimmable`).
+
+`max_footprint` (default **8.0 m**, `--max-footprint`, `0` disables) drops any
+object whose **smaller** horizontal dimension exceeds it. A genuinely solid
+barrier is thin in one direction — a 0.28 × 6.4 m wall segment survives at any
+setting — while a box many metres across in both directions is an artefact.
+On Town01 it drops exactly three objects (`Fence02`, `Wall02`, `Wall03`) and
+keeps every compact prop, including the 6.3 m fountains. Both tools name what
+they dropped: the dump on stderr and in a `dropped_bulk` field, the publisher in
+an INFO log.
+
+With `Static`/`Fences`/`Walls` on and `max_footprint: 8.0`, nothing published
+intrudes into the Town01 ego lane (`x` −4.0 … 0.0, `y` −2 … −330) except the
+`SpeedLimiter92` post, whose box edge stops exactly at the lane boundary.
+
+### Cost
+
+The set grows from ~115 to ~1229 objects, i.e. ~280 KB per `ObjectArray`.
+`object_array_merger` rebuilds and republishes that every tick and saturates one
+core, so `/carla/merged_obstacles` is delivered at ~7.4 Hz rather than the
+configured 10 Hz (about half that CPU is the RViz `MarkerArray`; drop `markers`
+to halve it). Dynamic freshness is unaffected — the bridge itself only publishes
+`/carla/ego_vehicle/objects` at ~4.5 Hz, and static geometry never moves. If the
+rate matters, narrow `radius` or turn `Walls`/`Fences` back off; most of the
+1229 are building perimeter walls tens of metres off the route (only ~120 objects
+lie within 12 m of it).
 
 `env.bounding_box.location` is world-frame for environment objects — composing
 `env.transform` on top of it double-counts the translation. Re-check with

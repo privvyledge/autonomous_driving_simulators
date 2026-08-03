@@ -175,9 +175,19 @@ class StaticObstaclePublisher(Node):
 
     def recollect(self, world):
         """Extract the obstacle set from `world` and report what came back."""
-        labels, near, radius, z_band, slim = self.filters
+        labels, near, radius, z_band, slim, max_footprint = self.filters
+        dropped = []
         objects = collect(world, labels, near=near, radius=radius,
-                          z_band=z_band, slim=slim)
+                          z_band=z_band, slim=slim,
+                          max_footprint=max_footprint, dropped=dropped)
+        if dropped:
+            # These are meshes whose single AABB spans a whole plot -- a spline
+            # fence around a garden, say -- so the box covers open road. Naming
+            # them keeps the drop auditable rather than silent.
+            self.get_logger().info(
+                '{} object(s) dropped as bulk boxes (smaller horizontal '
+                'dimension > {} m): {}'.format(
+                    len(dropped), max_footprint, ', '.join(dropped[:10])))
         self.get_logger().info(
             'collected {} static objects from {} (labels: {}; z_band: {}); '
             '{} re-anchored to a {} m post because their box carried '

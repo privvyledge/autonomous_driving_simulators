@@ -85,6 +85,8 @@ def launch_setup(context, *args, **kwargs):
         publisher_args += ['--slim-radius', cfg('slim_radius')]
     if not flag('slim_overhead'):
         publisher_args.append('--no-slim')
+    if cfg('max_footprint'):
+        publisher_args += ['--max-footprint', cfg('max_footprint')]
     if flag('markers'):
         publisher_args.append('--markers')
 
@@ -140,6 +142,12 @@ def generate_launch_description():
             'slim_radius', default_value='',
             description='half-width in metres of that post; empty falls back to '
                         'config_file (0.3)'),
+        DeclareLaunchArgument(
+            'max_footprint', default_value='',
+            description='drop objects whose SMALLER horizontal dimension exceeds '
+                        'this many metres -- CARLA reports one AABB per mesh, so a '
+                        'spline fence around a plot becomes a box covering open '
+                        'road. 0 disables; empty falls back to config_file (8.0)'),
         DeclareLaunchArgument('static_topic', default_value='/carla/static_obstacles'),
         DeclareLaunchArgument(
             'static_rate', default_value='1.0',

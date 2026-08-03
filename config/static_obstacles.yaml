@@ -19,12 +19,18 @@ labels:
   Poles: true            # light poles, sign posts. Town01: 220 objects.
   TrafficSigns: true     # sign faces and their posts
   TrafficLight: true     # traffic light heads + masts
-  Fences: false
-  Walls: false
+  Fences: true           # garden/plot fencing. Town01: 426 in the route window,
+                         # nearly all 1-3 m panel segments along the sidewalk.
+  Walls: true            # low perimeter walls. Town01: 481 in the route window.
+                         # Both of these also carry a handful of spline meshes
+                         # whose single AABB spans a whole plot -- max_footprint
+                         # below drops those.
   GuardRail: false
-  Static: false          # catch-all for props: benches, bins, vending machines.
-                         # Broad and noisy -- enable only if you need street
-                         # furniture beyond the categories above.
+  Static: true           # catch-all for props. On Town01 this is where the fire
+                         # hydrants, bollards and chain barriers live: solid in
+                         # the simulator, and no other label reports them, so the
+                         # ego collided with obstacles no topic published.
+                         # Also brings in plant pits, planters and fountains.
 
   # ── Structures. Off-road in Town01; large boxes that will dominate the
   #    output if enabled. Useful for parking lots or narrow alleys. ──────────
@@ -80,6 +86,21 @@ defaults:
   # half-width slim_radius at the pivot, clipped to the band.
   slim_overhead: true
   slim_radius: 0.3
+
+  # Drop an object whose SMALLER horizontal dimension exceeds this, in metres.
+  # 0 disables.
+  #
+  # CARLA reports one axis-aligned box per mesh, and a spline fence or wall that
+  # turns a corner comes back as a box spanning its whole plot. Town01's
+  # SM_Town01_Fence02 is a 34.9 x 16.3 m box centred at ROS (9.3, -328.6): the
+  # fence runs along the plot edges, but the box swallows the carriageway at the
+  # south end of the test route. A barrier that is genuinely solid is thin in one
+  # direction (a 0.28 x 6.4 m wall segment survives at any setting here); a box
+  # many metres across in BOTH directions is an artefact of the AABB.
+  #
+  # 8.0 drops exactly three objects on Town01 (Fence02, Wall02, Wall03) and keeps
+  # every compact prop, including the 6.3 m fountains.
+  max_footprint: 8.0
 
   # Extraction window centre (ROS x,y) and radius in metres. The Town01 test
   # route runs y = -2 .. -330 at x ~ -2, so this covers it.

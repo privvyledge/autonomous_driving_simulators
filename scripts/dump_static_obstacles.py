@@ -32,6 +32,7 @@ and the recorded waypoints all use).
 import argparse
 import json
 import math
+import sys
 
 import carla
 
@@ -94,7 +95,15 @@ def pivot_in_footprint(pivot, bb):
     return abs(local_x) <= bb.extent.x and abs(local_y) <= bb.extent.y
 
 
-def collect(world, labels, near=None, radius=50.0, z_band=None, slim=None):
+def footprint(ex, ey, yaw_deg):
+    """World-axis-aligned footprint (width, length) of a box, in metres."""
+    cos_y = abs(math.cos(math.radians(yaw_deg)))
+    sin_y = abs(math.sin(math.radians(yaw_deg)))
+    return 2.0 * (ex * cos_y + ey * sin_y), 2.0 * (ex * sin_y + ey * cos_y)
+
+
+def collect(world, labels, near=None, radius=50.0, z_band=None, slim=None,
+            max_footprint=None, dropped=None):
     """Return the level's static geometry as plain dicts, sorted along the road.
 
     `near` is an optional (ros_x, ros_y) filter centre. `z_band` is an optional
@@ -114,8 +123,20 @@ def collect(world, labels, near=None, radius=50.0, z_band=None, slim=None):
     object that pokes above the band, is wider than a post, and contains its own
     pivot is republished as a `slim` x `slim` post at the pivot, clipped to the
     band. Everything else keeps its AABB untouched.
+
+    `max_footprint` drops an object whose *smaller* horizontal dimension exceeds
+    it (None disables). CARLA reports one axis-aligned box per mesh, so a spline
+    fence or wall that turns a corner comes back as a box spanning its whole
+    plot -- measured on Town01, SM_Town01_Fence02 is a 34.9 x 16.3 m box that
+    swallows the carriageway at the south end of the test route even though the
+    fence itself only runs along that plot's edges. A genuinely solid barrier is
+    thin in one direction (a 0.28 x 6.4 m wall segment survives); a box many
+    metres across in BOTH directions is an artefact of the AABB, not an object,
+    and blocks road that is actually open. Pass a list as `dropped` to receive a
+    one-line description of everything max_footprint removed.
     """
     objects = []
+    dropped_bulk = dropped if dropped is not None else []
     for name in labels:
         label = getattr(carla.CityObjectLabel, name, None)
         if label is None:
@@ -141,6 +162,11 @@ def collect(world, labels, near=None, radius=50.0, z_band=None, slim=None):
                 z_lo, z_hi = max(z_lo, z_band[0]), min(z_hi, z_band[1])
                 rz, ez = 0.5 * (z_lo + z_hi), 0.5 * (z_hi - z_lo)
                 ex = ey = slim
+            width, length = footprint(ex, ey, ryaw)
+            if max_footprint is not None and min(width, length) > max_footprint:
+                dropped_bulk.append('{} ({}) at ({:.1f}, {:.1f}) {:.1f}x{:.1f} m'.format(
+                    env.name, name, rx, ry, width, length))
+                continue
             objects.append({
                 # CARLA ids are 64-bit; derived_object_msgs/Object.id is uint32.
                 'id': env.id & 0xFFFFFFFF,
@@ -201,6 +227,11 @@ def add_filter_arguments(parser):
                              'needs --z-band. Default 0.3')
     parser.add_argument('--no-slim', dest='slim', action='store_false', default=None,
                         help='publish such objects with their raw axis-aligned box')
+    parser.add_argument('--max-footprint', type=float, default=None, metavar='M',
+                        help='drop objects whose SMALLER horizontal dimension exceeds '
+                             'M metres -- CARLA gives one AABB per mesh, so a spline '
+                             'fence around a plot becomes a box covering open road '
+                             '(see collect). 0 disables. Default 8.0')
     parser.add_argument('--config', default=None, metavar='PATH',
                         help='YAML label selection, e.g. /config/static_obstacles.yaml. '
                              'Explicit --labels/--near/--radius/--z-band override it')
@@ -215,7 +246,10 @@ def _pair(value):
 
 
 def resolve_filters(args):
-    """Merge --config with the command line -> (labels, near, radius, z_band, slim)."""
+    """Merge --config with the command line.
+
+    -> (labels, near, radius, z_band, slim, max_footprint)
+    """
     labels, defaults = ([], {})
     if args.config:
         labels, defaults = load_config(args.config)
@@ -234,7 +268,11 @@ def resolve_filters(args):
         slim = float(defaults.get('slim_radius', 0.3))
     else:
         slim = None
-    return labels, near, float(radius), z_band, slim
+
+    max_footprint = (args.max_footprint if args.max_footprint is not None
+                     else defaults.get('max_footprint', 8.0))
+    max_footprint = float(max_footprint) or None   # 0 disables
+    return labels, near, float(radius), z_band, slim, max_footprint
 
 
 def main(argv=None):
@@ -257,7 +295,7 @@ def main(argv=None):
     client.set_timeout(10.0)
     world = client.get_world()
 
-    labels, near, radius, z_band, slim = resolve_filters(args)
+    labels, near, radius, z_band, slim, max_footprint = resolve_filters(args)
 
     if args.list_labels:
         print('CityObjectLabel members exposed by this CARLA build, with the '
@@ -302,16 +340,22 @@ def main(argv=None):
                           pivot_in_footprint(t, bb)))
         return
 
+    dropped = []
     objects = collect(world, labels, near=near, radius=radius, z_band=z_band,
-                      slim=slim)
+                      slim=slim, max_footprint=max_footprint, dropped=dropped)
+    for line in dropped:
+        # stderr, so `-o -` still emits parseable JSON on stdout.
+        print('# dropped (footprint > {} m in both directions): {}'.format(
+            max_footprint, line), file=sys.stderr)
     payload = {
         'map': world.get_map().name,
         'frame_note': 'ros = objects.json / odometry frame; carla = simulator frame',
         'filters': {
             'labels': labels, 'near': near, 'radius': radius, 'z_band': z_band,
-            'slim_radius': slim,
+            'slim_radius': slim, 'max_footprint': max_footprint,
         },
         'count': len(objects),
+        'dropped_bulk': dropped,
         'slimmed_count': sum(1 for o in objects if o['slimmed']),
         'unslimmable_count': sum(1 for o in objects if o['unslimmable']),
         'objects': objects,
