@@ -1,0 +1,75 @@
+# Which baked level geometry to treat as obstacles.
+#
+# CARLA tags every piece of static level geometry with a carla.CityObjectLabel.
+# scripts/dump_static_obstacles.py and scripts/static_obstacle_publisher.py read
+# this file via --config and extract every label set to true.
+#
+# The list below is the CityObjectLabel enum as of CARLA 0.9.14/0.9.15. It is
+# NOT authoritative for your build -- ask the running simulator instead, which
+# also reports how many objects each label actually holds on the current map:
+#
+#   docker compose exec carla-ros-bridge python3 /scripts/dump_static_obstacles.py --list-labels
+#
+# Anything unknown to the connected CARLA is skipped with a warning rather than
+# being a hard error, so this file stays portable across versions.
+
+labels:
+
+  # ── Genuine roadside obstacles ────────────────────────────────────────────
+  Poles: true            # light poles, sign posts. Town01: 220 objects.
+  TrafficSigns: true     # sign faces and their posts
+  TrafficLight: true     # traffic light heads + masts
+  Fences: false
+  Walls: false
+  GuardRail: false
+  Static: false          # catch-all for props: benches, bins, vending machines.
+                         # Broad and noisy -- enable only if you need street
+                         # furniture beyond the categories above.
+
+  # ── Structures. Off-road in Town01; large boxes that will dominate the
+  #    output if enabled. Useful for parking lots or narrow alleys. ──────────
+  Buildings: false
+  Bridge: false
+
+  # ── Not obstacles: drivable/paintable surfaces. Enabling these makes the
+  #    road itself an obstacle and the map instantly unsolvable. ─────────────
+  Roads: false
+  RoadLines: false
+  Sidewalks: false
+  Ground: false
+  Terrain: false
+  Water: false
+  Sky: false
+
+  # ── Dynamic things. These already reach ROS as *actors* on
+  #    /carla/ego_vehicle/objects, so extracting them here would double-count
+  #    them in the merger. Leave false unless the bridge is not running. ─────
+  Vehicles: false
+  Pedestrians: false
+  Dynamic: false
+
+  # ── Remaining enum members, off by default. ───────────────────────────────
+  Vegetation: false      # tree trunks are real obstacles, but the label also
+                         # covers overhanging canopy -- pair with z_band.
+  RailTrack: false
+  Other: false
+  Any: false             # everything at once; for exploration only.
+
+# Optional defaults. Command-line flags override anything set here; omit a key
+# to leave that filter off.
+defaults:
+
+  # Height window MIN,MAX in metres, ROS frame. An object is kept only if its
+  # vertical extent overlaps this band.
+  #
+  # This matters more than it looks. A CARLA street lamp is three sub-meshes:
+  # two thin pole pieces (radius ~0.25 m) and an arm whose bounding box has a
+  # ~1.93 m radius, sitting several metres up and reaching out over the
+  # carriageway. Without a height filter that arm becomes a ~4 m wide ground
+  # obstacle and the street is impassable to a planner.
+  z_band: [0.0, 2.5]
+
+  # Extraction window centre (ROS x,y) and radius in metres. The Town01 test
+  # route runs y = -2 .. -330 at x ~ -2, so this covers it.
+  near: [-2.0, -165.0]
+  radius: 200.0

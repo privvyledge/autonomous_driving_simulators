@@ -31,7 +31,7 @@ explicit source it dies on `ModuleNotFoundError: No module named 'rclpy'`:
 
 Then, from any container on the same ROS_DOMAIN_ID:
 
-    ros2 topic echo --once --flow-style /carla/static_objects
+    ros2 topic echo --once --flow-style /carla/static_obstacles
 """
 import argparse
 import math
@@ -57,7 +57,8 @@ try:
 except NameError:
     _HERE = '/scripts'
 sys.path.insert(0, _HERE)
-from dump_static_obstacles import DEFAULT_LABELS, collect  # noqa: E402
+from dump_static_obstacles import (add_filter_arguments, collect,  # noqa: E402
+                                   resolve_filters)
 
 # derived_object_msgs/Object classification constants. Matches what the bridge
 # already emits on /carla/ego_vehicle/objects (4=PEDESTRIAN .. 8=MOTORCYCLE).
@@ -162,11 +163,12 @@ class StaticObstaclePublisher(Node):
         client.set_timeout(10.0)
         world = client.get_world()
 
-        near = tuple(float(v) for v in args.near.split(',')) if args.near else None
-        self.objects = collect(world, args.labels, near=near, radius=args.radius)
+        labels, near, radius, z_band = resolve_filters(args)
+        self.objects = collect(world, labels, near=near, radius=radius, z_band=z_band)
         self.get_logger().info(
-            'collected {} static objects from {} (labels: {})'.format(
-                len(self.objects), world.get_map().name, ', '.join(args.labels)))
+            'collected {} static objects from {} (labels: {}; z_band: {})'.format(
+                len(self.objects), world.get_map().name, ', '.join(labels),
+                z_band if z_band else 'unfiltered — overhead geometry included'))
         if not self.objects:
             self.get_logger().warn(
                 'no static geometry matched -- check --labels and the --near/--radius filter')
@@ -187,12 +189,8 @@ def main():
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--host', default='localhost')
     parser.add_argument('--port', type=int, default=2000)
-    parser.add_argument('--labels', nargs='+', default=DEFAULT_LABELS,
-                        help='carla.CityObjectLabel names (default: %(default)s)')
-    parser.add_argument('--near', default=None, metavar='ROS_X,ROS_Y',
-                        help='keep only objects within --radius of this ROS-frame point')
-    parser.add_argument('--radius', type=float, default=50.0)
-    parser.add_argument('--topic', default='/carla/static_objects')
+    add_filter_arguments(parser)
+    parser.add_argument('--topic', default='/carla/static_obstacles')
     parser.add_argument('--frame-id', default='map',
                         help='must match the bridge, which publishes objects in map')
     parser.add_argument('--rate', type=float, default=0.0,

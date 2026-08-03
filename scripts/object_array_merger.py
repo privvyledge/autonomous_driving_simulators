@@ -55,6 +55,8 @@ from rclpy.qos import (QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile,
 from rclpy.utilities import remove_ros_args
 
 from derived_object_msgs.msg import ObjectArray
+from std_msgs.msg import ColorRGBA
+from visualization_msgs.msg import Marker, MarkerArray
 
 # derived_object_msgs/Object.id is uint32. Split it into an 8-bit source index
 # and a 24-bit per-source id so ids stay unique and their origin stays readable
@@ -62,6 +64,15 @@ from derived_object_msgs.msg import ObjectArray
 SOURCE_SHIFT = 24
 ID_MASK = (1 << SOURCE_SHIFT) - 1
 MAX_SOURCES = 1 << (32 - SOURCE_SHIFT)
+
+# Marker colour per source index, so it is obvious in RViz which producer a box
+# came from. Cycles if there are more sources than colours.
+SOURCE_COLOURS = [
+    (0.10, 0.60, 1.00),   # blue    — source 0 (typically the live actor stream)
+    (1.00, 0.35, 0.00),   # orange  — source 1 (typically static level geometry)
+    (0.20, 0.85, 0.30),   # green
+    (0.90, 0.20, 0.65),   # magenta
+]
 
 
 class Source:
@@ -123,6 +134,9 @@ class ObjectArrayMerger(Node):
             reliability=QoSReliabilityPolicy.RELIABLE,
             durability=QoSDurabilityPolicy.VOLATILE)
         self.pub = self.create_publisher(ObjectArray, args.output, out_qos)
+        self.marker_pub = (
+            self.create_publisher(MarkerArray, args.output + '/markers', out_qos)
+            if args.markers else None)
 
         for source in self.sources:
             # Default arg binds the loop variable -- otherwise every callback
@@ -179,6 +193,7 @@ class ObjectArrayMerger(Node):
         merged.header.stamp = stamp
 
         kept = []
+        origin = []          # source index per kept object, for marker colouring
         for source in self.sources:
             self._expire(source, now)
             for obj in source.objects:
@@ -188,9 +203,41 @@ class ObjectArrayMerger(Node):
                     obj.header.stamp = stamp
                 obj.header.frame_id = self.frame_id
                 kept.append(obj)
+                origin.append(source.index)
 
         merged.objects = kept
         self.pub.publish(merged)
+        if self.marker_pub is not None:
+            self.marker_pub.publish(self._markers(kept, origin, stamp))
+
+    def _markers(self, objects, origin, stamp):
+        markers = MarkerArray()
+        # Evicting a source shrinks the array; without an explicit clear, RViz
+        # would keep showing the markers whose ids are no longer republished.
+        clear = Marker()
+        clear.header.frame_id = self.frame_id
+        clear.action = Marker.DELETEALL
+        markers.markers.append(clear)
+
+        for i, (obj, src) in enumerate(zip(objects, origin)):
+            m = Marker()
+            m.header.frame_id = self.frame_id
+            m.header.stamp = stamp
+            m.ns = 'merged_obstacles'
+            m.id = i
+            m.type = Marker.CUBE
+            m.action = Marker.ADD
+            m.pose = obj.pose
+            dims = list(obj.shape.dimensions) + [0.0, 0.0, 0.0]
+            # CARLA's two-wheeler blueprints report a zero bounding box, and a
+            # zero-scale marker is dropped by RViz without warning -- so clamp.
+            m.scale.x = max(float(dims[0]), 0.1)
+            m.scale.y = max(float(dims[1]), 0.1)
+            m.scale.z = max(float(dims[2]), 0.1)
+            r, g, b = SOURCE_COLOURS[src % len(SOURCE_COLOURS)]
+            m.color = ColorRGBA(r=r, g=g, b=b, a=0.65)
+            markers.markers.append(m)
+        return markers
 
     def _is_duplicate(self, obj, kept):
         """True if an earlier source already emitted an object at this spot.
@@ -214,7 +261,10 @@ def main():
         '--source', action='append', required=True, metavar='TOPIC[:OPTS]',
         help='input topic, repeatable. OPTS is a comma-separated list of '
              'latched, timeout=SECONDS (0 = never evict), offset=INT')
-    parser.add_argument('--output', default='/obstacles')
+    parser.add_argument('--output', default='/carla/merged_obstacles')
+    parser.add_argument('--markers', action='store_true',
+                        help='also publish a MarkerArray on <output>/markers, '
+                             'coloured by source index, for RViz')
     parser.add_argument('--rate', type=float, default=10.0,
                         help='republish rate in Hz (default: %(default)s)')
     parser.add_argument('--timeout', type=float, default=1.0,
