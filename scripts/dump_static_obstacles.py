@@ -75,7 +75,7 @@ def to_ros(x, y, z, yaw_deg):
     return x, -y, z, -yaw_deg
 
 
-def collect(world, labels, near=None, radius=50.0, z_band=None):
+def collect(world, labels, near=None, radius=50.0, z_band=None, slim=None):
     """Return the level's static geometry as plain dicts, sorted along the road.
 
     `near` is an optional (ros_x, ros_y) filter centre. `z_band` is an optional
@@ -84,6 +84,17 @@ def collect(world, labels, near=None, radius=50.0, z_band=None):
     is a ~4 m wide box several metres up, and treating that as a ground obstacle
     makes the road impassable. Shared with static_obstacle_publisher.py so both
     tools see an identical obstacle set.
+
+    `slim` is the half-width in metres to re-anchor L-shaped meshes to; None
+    disables it. The band alone is not enough: a CARLA street lamp's third
+    sub-mesh is the pole AND its overhanging arm in one box, so its z span
+    starts at the ground (it survives the band) while its 3.8 m wide AABB is
+    centred out over the carriageway. CARLA gives one axis-aligned box per mesh
+    and no way to intersect it with the band, but env.transform.location is the
+    mesh's pivot -- the pole base -- and lies inside that footprint. So an
+    object that pokes above the band, is wider than a post, and contains its own
+    pivot is republished as a `slim` x `slim` post at the pivot, clipped to the
+    band. Everything else keeps its AABB untouched.
     """
     objects = []
     for name in labels:
@@ -95,19 +106,30 @@ def collect(world, labels, near=None, radius=50.0, z_band=None):
             bb = env.bounding_box
             # For environment objects the bounding box is already world-frame.
             loc, ext, rot = bb.location, bb.extent, bb.rotation
+            ex, ey, ez = ext.x, ext.y, ext.z
             rx, ry, rz, ryaw = to_ros(loc.x, loc.y, loc.z, rot.yaw)
             if near and math.hypot(rx - near[0], ry - near[1]) > radius:
                 continue
-            z_lo, z_hi = rz - ext.z, rz + ext.z
+            z_lo, z_hi = rz - ez, rz + ez
             if z_band is not None and (z_hi < z_band[0] or z_lo > z_band[1]):
                 continue
+            pivot = env.transform.location
+            slimmed = (slim is not None and z_band is not None
+                       and z_hi > z_band[1] and max(ex, ey) > slim
+                       and abs(pivot.x - loc.x) <= ex
+                       and abs(pivot.y - loc.y) <= ey)
+            if slimmed:
+                rx, ry = pivot.x, -pivot.y
+                z_lo, z_hi = max(z_lo, z_band[0]), min(z_hi, z_band[1])
+                rz, ez = 0.5 * (z_lo + z_hi), 0.5 * (z_hi - z_lo)
+                ex = ey = slim
             objects.append({
                 # CARLA ids are 64-bit; derived_object_msgs/Object.id is uint32.
                 'id': env.id & 0xFFFFFFFF,
                 'name': env.name,
                 'label': name,
                 'carla': {
-                    'x': round(loc.x, 3), 'y': round(loc.y, 3), 'z': round(loc.z, 3),
+                    'x': round(rx, 3), 'y': round(-ry, 3), 'z': round(rz, 3),
                     'yaw': round(rot.yaw, 3),
                 },
                 'ros': {
@@ -116,10 +138,13 @@ def collect(world, labels, near=None, radius=50.0, z_band=None):
                 },
                 # Half-extents, frame-independent.
                 'extent': {
-                    'x': round(ext.x, 3), 'y': round(ext.y, 3), 'z': round(ext.z, 3),
+                    'x': round(ex, 3), 'y': round(ey, 3), 'z': round(ez, 3),
                 },
                 # Convenient for a circular/elliptical MPC constraint.
-                'radius': round(math.hypot(ext.x, ext.y), 3),
+                'radius': round(math.hypot(ex, ey), 3),
+                # True when the AABB was replaced by a post at the mesh pivot
+                # because it carried overhead geometry; see collect().
+                'slimmed': slimmed,
                 # Vertical span, so a consumer can tell a pole from an overhead
                 # lamp arm without recomputing it.
                 'z_span': [round(z_lo, 3), round(z_hi, 3)],
@@ -146,6 +171,12 @@ def add_filter_arguments(parser):
                         help='keep only objects whose vertical extent overlaps '
                              'this height window, e.g. --z-band=0,2.5 to drop '
                              'overhead lamp arms and traffic-light gantries')
+    parser.add_argument('--slim-radius', type=float, default=None, metavar='M',
+                        help='half-width of the post an object is re-anchored to '
+                             'when its box carries overhead geometry (see collect); '
+                             'needs --z-band. Default 0.3')
+    parser.add_argument('--no-slim', dest='slim', action='store_false', default=None,
+                        help='publish such objects with their raw axis-aligned box')
     parser.add_argument('--config', default=None, metavar='PATH',
                         help='YAML label selection, e.g. /config/static_obstacles.yaml. '
                              'Explicit --labels/--near/--radius/--z-band override it')
@@ -160,7 +191,7 @@ def _pair(value):
 
 
 def resolve_filters(args):
-    """Merge --config with the command line -> (labels, near, radius, z_band)."""
+    """Merge --config with the command line -> (labels, near, radius, z_band, slim)."""
     labels, defaults = ([], {})
     if args.config:
         labels, defaults = load_config(args.config)
@@ -169,7 +200,17 @@ def resolve_filters(args):
     near = _pair(args.near) if args.near is not None else _pair(defaults.get('near'))
     z_band = _pair(args.z_band) if args.z_band is not None else _pair(defaults.get('z_band'))
     radius = args.radius if args.radius is not None else defaults.get('radius', 50.0)
-    return labels, near, float(radius), z_band
+
+    # --no-slim wins over everything; then --slim-radius, then the config.
+    if args.slim is False:
+        slim = None
+    elif args.slim_radius is not None:
+        slim = args.slim_radius
+    elif defaults.get('slim_overhead', True):
+        slim = float(defaults.get('slim_radius', 0.3))
+    else:
+        slim = None
+    return labels, near, float(radius), z_band, slim
 
 
 def main(argv=None):
@@ -192,7 +233,7 @@ def main(argv=None):
     client.set_timeout(10.0)
     world = client.get_world()
 
-    labels, near, radius, z_band = resolve_filters(args)
+    labels, near, radius, z_band, slim = resolve_filters(args)
 
     if args.list_labels:
         print('CityObjectLabel members exposed by this CARLA build, with the '
@@ -207,9 +248,13 @@ def main(argv=None):
         return
 
     if args.diagnose:
-        # Is bounding_box.location already world-space, or is it relative to
-        # env.transform? If the two differ, the boxes must be placed through
-        # the transform -- and every position this tool has reported is wrong.
+        # Settled on CARLA 0.9.14/Town01: bounding_box.location is already
+        # world-space. Composing env.transform on top of it double-counts the
+        # translation and lands the object near the map origin, so collect()
+        # is right to use bb.location as-is -- keep this around to re-check on
+        # another CARLA version. What it is still useful for is the slimming
+        # rule: `transform.location` must fall inside the box footprint for a
+        # mesh to be re-anchored to it.
         for name in labels:
             label = getattr(carla.CityObjectLabel, name, None)
             if label is None:
@@ -222,21 +267,29 @@ def main(argv=None):
                 print('  {}\n    transform.location    {:9.3f} {:9.3f} {:9.3f}'
                       '\n    bounding_box.location {:9.3f} {:9.3f} {:9.3f}'
                       '\n    transform(bb.location){:9.3f} {:9.3f} {:9.3f}'
-                      '\n    extent                {:9.3f} {:9.3f} {:9.3f}'.format(
+                      '\n    extent                {:9.3f} {:9.3f} {:9.3f}'
+                      '\n    z span                {:9.3f} {:9.3f}   '
+                      'pivot in footprint: {}'.format(
                           env.name, t.x, t.y, t.z,
                           bb.location.x, bb.location.y, bb.location.z,
                           composed.x, composed.y, composed.z,
-                          bb.extent.x, bb.extent.y, bb.extent.z))
+                          bb.extent.x, bb.extent.y, bb.extent.z,
+                          bb.location.z - bb.extent.z, bb.location.z + bb.extent.z,
+                          abs(t.x - bb.location.x) <= bb.extent.x
+                          and abs(t.y - bb.location.y) <= bb.extent.y))
         return
 
-    objects = collect(world, labels, near=near, radius=radius, z_band=z_band)
+    objects = collect(world, labels, near=near, radius=radius, z_band=z_band,
+                      slim=slim)
     payload = {
         'map': world.get_map().name,
         'frame_note': 'ros = objects.json / odometry frame; carla = simulator frame',
         'filters': {
             'labels': labels, 'near': near, 'radius': radius, 'z_band': z_band,
+            'slim_radius': slim,
         },
         'count': len(objects),
+        'slimmed_count': sum(1 for o in objects if o['slimmed']),
         'objects': objects,
     }
     text = json.dumps(payload, indent=2)

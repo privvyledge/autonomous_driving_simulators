@@ -163,12 +163,16 @@ class StaticObstaclePublisher(Node):
         client.set_timeout(10.0)
         world = client.get_world()
 
-        labels, near, radius, z_band = resolve_filters(args)
-        self.objects = collect(world, labels, near=near, radius=radius, z_band=z_band)
+        labels, near, radius, z_band, slim = resolve_filters(args)
+        self.objects = collect(world, labels, near=near, radius=radius,
+                               z_band=z_band, slim=slim)
         self.get_logger().info(
-            'collected {} static objects from {} (labels: {}; z_band: {})'.format(
+            'collected {} static objects from {} (labels: {}; z_band: {}); '
+            '{} re-anchored to a {} m post because their box carried '
+            'overhead geometry'.format(
                 len(self.objects), world.get_map().name, ', '.join(labels),
-                z_band if z_band else 'unfiltered — overhead geometry included'))
+                z_band if z_band else 'unfiltered — overhead geometry included',
+                sum(1 for o in self.objects if o['slimmed']), slim))
         if not self.objects:
             self.get_logger().warn(
                 'no static geometry matched -- check --labels and the --near/--radius filter')

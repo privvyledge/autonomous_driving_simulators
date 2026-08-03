@@ -69,6 +69,18 @@ defaults:
   # obstacle and the street is impassable to a planner.
   z_band: [0.0, 2.5]
 
+  # The band alone is not enough. That same lamp's third sub-mesh is the pole
+  # AND the arm in ONE box: its z span starts at the ground (so it survives the
+  # band) while its ~3.8 m wide AABB is centred out over the carriageway --
+  # measured on Town01, pole base at CARLA x=94.99, box centre at x=93.28.
+  # CARLA exposes one axis-aligned box per mesh and no way to clip it to the
+  # band, but env.transform.location is the mesh pivot (the pole base) and sits
+  # inside that footprint. So an object that pokes above the band, is wider
+  # than a post, and contains its own pivot is republished as a square post of
+  # half-width slim_radius at the pivot, clipped to the band.
+  slim_overhead: true
+  slim_radius: 0.3
+
   # Extraction window centre (ROS x,y) and radius in metres. The Town01 test
   # route runs y = -2 .. -330 at x ~ -2, so this covers it.
   near: [-2.0, -165.0]

@@ -162,9 +162,9 @@ docker compose exec carla-ros-bridge bash -c \
      labels:='Poles TrafficSigns' z_band:=0,2.5 radius:=200.0"
 ```
 
-Arguments: `host` `port` `labels` `near` `radius` `z_band` `static_topic`
-`actor_topic` `merged_topic` `frame_id` `rate` `dedup_radius` `markers`
-`launch_merger`.
+Arguments: `host` `port` `labels` `near` `radius` `z_band` `slim_overhead`
+`slim_radius` `static_topic` `actor_topic` `merged_topic` `frame_id` `rate`
+`dedup_radius` `markers` `launch_merger`.
 
 ## RViz
 
@@ -181,3 +181,37 @@ whose bounding box has a ≈1.93 m radius several metres up. Fed to a planner as
 a ground obstacle, that ~4 m wide box sits across the carriageway and makes the
 street impassable. `--z-band=0,2.5` keeps only geometry whose vertical extent
 overlaps the vehicle's height band.
+
+## Overhead slimming — why the height band is not enough
+
+The band drops `_SM_0`/`_SM_1`, but `_SM_2` is the pole **and** the arm in a
+single mesh, so its box reaches the ground and survives the filter while
+keeping the arm's full width. Measured on Town01:
+
+```
+transform.location     94.987  209.330    0.100   <- pole base (mesh pivot)
+bounding_box.location  93.279  209.330    3.978   <- already world frame
+extent                  1.917    0.220    3.877   -> x 91.36..95.20, z 0.10..7.86
+```
+
+A 3.83 m wide obstacle centred 1.7 m off the pole base, i.e. out over the
+carriageway — the same false blockage the band was meant to remove.
+
+CARLA exposes one axis-aligned box per mesh and no way to clip it to the band.
+But `env.transform.location` is the mesh pivot (the pole base) and lies inside
+the box footprint, so `collect()` re-anchors any object that
+
+1. pokes above the band's top,
+2. is wider than `slim_radius`, and
+3. contains its own pivot in its footprint
+
+to a `slim_radius` × `slim_radius` post at that pivot, clipped to the band —
+`ext 0.30, 0.30, 1.20` at ROS `x = 94.987`. Everything else keeps its raw box.
+Objects carry a `slimmed` flag and the dump reports `slimmed_count`. Tune with
+`slim_overhead` / `slim_radius` in `config/static_obstacles.yaml`, or
+`--slim-radius` / `--no-slim` on either script.
+
+`env.bounding_box.location` is world-frame for environment objects — composing
+`env.transform` on top of it double-counts the translation. Re-check with
+`--diagnose N` on a new CARLA version; it prints both plus whether the pivot
+falls inside the footprint.

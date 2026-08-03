@@ -80,6 +80,10 @@ def launch_setup(context, *args, **kwargs):
         publisher_args.append('--near={}'.format(cfg('near')))
     if cfg('z_band'):
         publisher_args.append('--z-band={}'.format(cfg('z_band')))
+    if cfg('slim_radius'):
+        publisher_args += ['--slim-radius', cfg('slim_radius')]
+    if not flag('slim_overhead'):
+        publisher_args.append('--no-slim')
     if flag('markers'):
         publisher_args.append('--markers')
 
@@ -125,6 +129,16 @@ def generate_launch_description():
             description='height window MIN,MAX. Keeps overhead lamp arms and '
                         'traffic-light gantries out of the obstacle set; empty '
                         'falls back to config_file'),
+        DeclareLaunchArgument(
+            'slim_overhead', default_value='True',
+            description='re-anchor a box that pokes above z_band and is wider '
+                        'than a post to a slim post at its mesh pivot -- a lamp '
+                        'pole and its overhanging arm share one box that the '
+                        'height filter cannot split'),
+        DeclareLaunchArgument(
+            'slim_radius', default_value='',
+            description='half-width in metres of that post; empty falls back to '
+                        'config_file (0.3)'),
         DeclareLaunchArgument('static_topic', default_value='/carla/static_obstacles'),
         DeclareLaunchArgument('actor_topic', default_value='/carla/ego_vehicle/objects'),
         DeclareLaunchArgument(
