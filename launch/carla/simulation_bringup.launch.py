@@ -263,6 +263,27 @@ def launch_setup(context, *args, **kwargs):
         actions=[carla_ackermann_control_node, carla_twist_to_control_node]
     )
 
+    # 9. Static level geometry (light poles, signs) + object merging.
+    #    carla_ros_bridge only publishes ACTORS, so baked level geometry never
+    #    reaches ROS. This publishes it and merges it with the bridge's actor
+    #    stream onto /carla/merged_obstacles -- the single topic an
+    #    obstacle-avoiding controller should subscribe to.
+    static_obstacles_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(
+                get_package_share_directory('autonomous_driving_simulators'),
+                'launch', 'carla', 'static_obstacles.launch.py'
+            )
+        ),
+        condition=IfCondition(LaunchConfiguration('launch_static_obstacles')),
+        launch_arguments={
+            'host': host,
+            'port': port,
+            'config_file': LaunchConfiguration('static_obstacles_config'),
+            'actor_topic': ['/carla/', role_name, '/objects'],
+        }.items()
+    )
+
     return [
         carla_ros_bridge_launch,
         carla_spawn_objects_launch,
@@ -271,7 +292,8 @@ def launch_setup(context, *args, **kwargs):
         built_in_agent_launch,
         carla_autoware_bridge_launch,
         carla_manual_control_launch,
-        actuation_group
+        actuation_group,
+        static_obstacles_launch
     ]
 
 def generate_launch_description():
@@ -298,6 +320,8 @@ def generate_launch_description():
         DeclareLaunchArgument('start_global_planner_carla', default_value='True', description='Start global planner'),
         DeclareLaunchArgument('launch_builtin_agent', default_value='True', description='Launch built-in AD agent'),
         DeclareLaunchArgument('launch_autoware_bridge', default_value='False', description='Launch autoware bridge'),
+        DeclareLaunchArgument('launch_static_obstacles', default_value='True', description='Publish CARLA baked level geometry (light poles, signs) that carla_ros_bridge cannot see, and merge it with the bridge actor stream onto /carla/merged_obstacles.'),
+        DeclareLaunchArgument('static_obstacles_config', default_value=os.path.join(pkg_share, 'config', 'static_obstacles.yaml'), description='YAML selecting which carla.CityObjectLabel types count as obstacles, plus height/radius filter defaults.'),
         DeclareLaunchArgument('reload_map', default_value='True', description="If False, attach to the already-loaded CARLA map instead of calling load_world() (avoids heavy-map reload crashes on resource-limited servers)."),
         DeclareLaunchArgument('view', default_value='False', description='Launch the carla_manual_control pygame viewer (needs a DISPLAY and a spawned ego).'),
         DeclareLaunchArgument('launch_actuation', default_value='False', description='Run CARLA low-level actuation (carla_ackermann_control / carla_twist_to_control) in this container for the custom-controller path. Set launch_builtin_agent:=False when True so the built-in AD agent and the actuation node do not both publish vehicle_control_cmd.'),

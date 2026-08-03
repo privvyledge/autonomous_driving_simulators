@@ -20,8 +20,11 @@ needs the CARLA client:
     ros2 launch autonomous_driving_simulators carla/static_obstacles.launch.py \
         labels:="Poles TrafficSigns" z_band:=0,2.5 near:=-2.0,-165.0 radius:=200.0
 """
+import os
+import sys
+
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, OpaqueFunction
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -32,6 +35,28 @@ def launch_setup(context, *args, **kwargs):
 
     def flag(name):
         return cfg(name).lower() in ('true', '1', 'yes')
+
+    scripts_dir = cfg('scripts_dir')
+
+    def run(script, node_name, arguments):
+        """Prefer the bind-mounted script over the installed executable.
+
+        These nodes are installed through setup.py's scripts=[] list, so
+        `ros2 run` only finds them after a colcon build. scripts_dir (the
+        ./scripts bind mount, /scripts in the containers) is live, so running
+        from there means a `git pull` is enough -- and, more importantly, that
+        including this file in the bringup cannot break the bringup for anyone
+        who has not rebuilt yet. Set scripts_dir:='' to force the installed
+        executable.
+        """
+        path = os.path.join(scripts_dir, script) if scripts_dir else ''
+        if path and os.path.isfile(path):
+            return ExecuteProcess(
+                cmd=[sys.executable, path] + arguments,
+                name=node_name, output='screen')
+        return Node(
+            package='autonomous_driving_simulators', executable=script,
+            name=node_name, output='screen', arguments=arguments)
 
     publisher_args = [
         '--host', cfg('host'),
@@ -69,23 +94,11 @@ def launch_setup(context, *args, **kwargs):
     if flag('markers'):
         merger_args.append('--markers')
 
-    nodes = [
-        Node(
-            package='autonomous_driving_simulators',
-            executable='static_obstacle_publisher.py',
-            name='carla_static_obstacle_publisher',
-            output='screen',
-            arguments=publisher_args,
-        ),
-    ]
+    nodes = [run('static_obstacle_publisher.py',
+                 'carla_static_obstacle_publisher', publisher_args)]
     if flag('launch_merger'):
-        nodes.append(Node(
-            package='autonomous_driving_simulators',
-            executable='object_array_merger.py',
-            name='object_array_merger',
-            output='screen',
-            arguments=merger_args,
-        ))
+        nodes.append(run('object_array_merger.py',
+                         'object_array_merger', merger_args))
     return nodes
 
 
@@ -125,5 +138,10 @@ def generate_launch_description():
                         'earlier source; 0 disables'),
         DeclareLaunchArgument('markers', default_value='True'),
         DeclareLaunchArgument('launch_merger', default_value='True'),
+        DeclareLaunchArgument(
+            'scripts_dir', default_value='/scripts',
+            description='Run the nodes from this bind-mounted directory when the '
+                        'files are present, so no colcon build is needed. Set to '
+                        "'' to force the installed ros2 run executables"),
         OpaqueFunction(function=launch_setup),
     ])
