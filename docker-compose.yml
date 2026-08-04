@@ -16,7 +16,17 @@ x-ros-common: &ros-common
   ipc: host
   pid: host
   environment: &ros-env
+    # DDS partitioning. Every container in THIS stack must share one value; two
+    # stacks on the same LAN (e.g. two dev PCs) must use DIFFERENT values or their
+    # nodes discover each other and clash on /carla/*, /tf, /clock, ...
+    # Pick a per-machine id in .env (see .env.example for the convention).
     ROS_DOMAIN_ID: "${ROS_DOMAIN_ID:-0}"
+    # 0 (default) = normal LAN discovery, so cross-machine ROS keeps working
+    # (remote rviz2, multi-host nodes). ROS_DOMAIN_ID above is what separates
+    # machines. 1 = confine discovery to loopback: nothing leaves this host and
+    # nothing on the LAN is seen — all ROS services run with network_mode: host,
+    # so they still see each other over lo. Use 1 as a stricter fallback.
+    ROS_LOCALHOST_ONLY: "${ROS_LOCALHOST_ONLY:-0}"
     RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
     RCUTILS_COLORIZED_OUTPUT: "1"
 

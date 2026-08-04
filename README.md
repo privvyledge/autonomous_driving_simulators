@@ -188,7 +188,8 @@ docker compose build --build-arg CARLA_VERSION=0.9.15 carla-server
 
 | Variable | Default | Description |
 |---|---|---|
-| `ROS_DOMAIN_ID` | `0` | Isolates DDS traffic from other ROS2 nodes on the host |
+| `ROS_DOMAIN_ID` | `42` | DDS domain. Isolates this stack from other ROS2 nodes on the host **and on the LAN** — give every machine its own id (gosling1=42, velox1=43) or two stacks will fight over `/carla/*`, `/tf`, `/clock` |
+| `ROS_LOCALHOST_ONLY` | `0` | `0` = normal LAN discovery, so cross-machine ROS works (remote rviz2). `1` confines discovery to loopback — containers still talk over `lo` since they are `network_mode: host` |
 | `CARLA_VERSION` | `0.9.14` | CARLA release tag (flip to `0.9.15` on capable machines) |
 | `CARLA_HOST` | `localhost` | Host/IP of the CARLA server (for bridge container) |
 | `CARLA_PORT` | `2000` | RPC port |
@@ -389,6 +390,17 @@ dependency failed to start: container carla-server is unhealthy
 - Ensure all containers use `network_mode: host` (set in compose)
 - Check `ROS_DOMAIN_ID` is the same across containers
 - Run `sudo ip link set lo multicast on` (done automatically in container startup)
+- Host-side tools (`ros2 topic echo`, rviz2, natively-built nodes) need the same
+  `ROS_DOMAIN_ID` exported, and `ROS_LOCALHOST_ONLY` matching the containers'
+
+**Two machines' stacks interfering (duplicate/jittery `/tf`, `/clock`, ego commands)**
+
+- DDS discovery is multicast and crosses the LAN, so two PCs both on domain `0` merge
+  into one ROS graph. Give each machine a unique `ROS_DOMAIN_ID` in its `.env`
+  (gosling1=42, velox1=43) — that alone separates them while leaving cross-host ROS
+  usable. `ROS_LOCALHOST_ONLY=1` is the stricter fallback if a clash somehow persists.
+- `docker compose up -d --force-recreate` after changing either — env is baked in at
+  container create time.
 
 **`KeyError: 'input/lidar_ml/objects'`** _(historical note — fixed)_
 
